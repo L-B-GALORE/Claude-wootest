@@ -27,6 +27,46 @@ const callerNumber = document.getElementById('caller-number');
 const activeNumber = document.getElementById('active-number');
 const callTimerDiv = document.getElementById('call-timer');
 
+// Global error logging function
+async function logError(error, context = {}) {
+    try {
+        await fetch('/api/log-error', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: error.message || error.toString(),
+                stack: error.stack || null,
+                context: {
+                    ...context,
+                    userAgent: navigator.userAgent,
+                    url: window.location.href
+                }
+            })
+        });
+    } catch (logError) {
+        console.error('Failed to log error to backend:', logError);
+    }
+}
+
+// Global error handler
+window.addEventListener('error', (event) => {
+    logError(event.error || new Error(event.message), {
+        type: 'uncaught',
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno
+    });
+});
+
+// Global promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+    logError(event.reason || new Error('Unhandled promise rejection'), {
+        type: 'promise_rejection'
+    });
+});
+
 // Initialize app
 async function init() {
     try {
@@ -45,6 +85,7 @@ async function init() {
         }
     } catch (error) {
         console.error('Initialization error:', error);
+        logError(error, { function: 'init' });
         showStatus('Error checking initialization status', true);
     }
 }
@@ -86,6 +127,7 @@ setupForm.addEventListener('submit', async (e) => {
             setupStatus.className = 'error';
         }
     } catch (error) {
+        logError(error, { function: 'setupForm', accountSid });
         setupStatus.textContent = `Error: ${error.message}`;
         setupStatus.className = 'error';
     }
@@ -118,6 +160,7 @@ async function initializePhone() {
 
         device.on('error', (error) => {
             console.error('Twilio Device Error:', error);
+            logError(error, { source: 'twilio_device' });
             showStatus(`Error: ${error.message}`, true);
         });
 
@@ -164,6 +207,7 @@ async function initializePhone() {
 
     } catch (error) {
         console.error('Phone initialization error:', error);
+        logError(error, { function: 'initializePhone' });
         showStatus(`Error: ${error.message}`, true);
     }
 }
@@ -201,6 +245,7 @@ callBtn.addEventListener('click', async () => {
         console.log('Calling:', number);
     } catch (error) {
         console.error('Call error:', error);
+        logError(error, { function: 'makeCall', number });
         alert('Failed to make call: ' + error.message);
     }
 });

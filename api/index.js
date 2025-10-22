@@ -661,11 +661,11 @@ app.post('/voice', async (req, res) => {
     const voiceNumber = numbers.find(n => n.voice_config && n.voice_config.webhook_configured);
     const callerId = voiceNumber ? voiceNumber.phone_number : null;
 
-    // Check if this is an outgoing call from browser
-    if (req.body.To) {
+    // Check if this is an outgoing call from browser (From will be "client:browser_user")
+    if (req.body.From && req.body.From.startsWith('client:')) {
       // Outgoing call from browser to external number
       const dial = response.dial({
-        callerId: callerId || req.body.To
+        callerId: callerId
       });
       dial.number(req.body.To);
     } else {

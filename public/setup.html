@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup - Twilio Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .setup-container {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .setup-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .setup-header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .setup-header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .setup-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .setup-card {
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .setup-card:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.2);
+        }
+
+        .setup-card.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .setup-card.disabled:hover {
+            transform: none;
+            border-color: #e0e0e0;
+            background: #f8f9fa;
+            box-shadow: none;
+        }
+
+        .setup-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .setup-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .setup-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .setup-status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        .status-ready {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-completed {
+            background: #c8e6c9;
+            color: #388e3c;
+        }
+
+        .setup-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .setup-btn:hover {
+            background: #5568d3;
+        }
+
+        .setup-btn.completed {
+            background: #10b981;
+        }
+
+        .setup-btn.completed:hover {
+            background: #059669;
+        }
+
+        .skip-setup {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .skip-setup a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .skip-setup a:hover {
+            text-decoration: underline;
+        }
+
+        .reset-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+        }
+
+        .reset-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .reset-btn:hover {
+            background: #dc2626;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .modal-cancel {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .modal-confirm {
+            background: #ef4444;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <div class="setup-header">
+            <h1>Welcome to Twilio Manager</h1>
+            <p>Choose what you'd like to set up. You can always configure more features later.</p>
+        </div>
+
+        <div class="setup-options">
+            <!-- Voice Setup Card -->
+            <div class="setup-card" id="voice-card" onclick="startVoiceSetup()">
+                <div class="setup-icon">📞</div>
+                <div class="setup-title">Voice Calling</div>
+                <div class="setup-status status-ready" id="voice-status">Ready to configure</div>
+                <div class="setup-description">
+                    Make and receive phone calls directly in your browser
+                </div>
+                <button class="setup-btn" id="voice-btn">Configure Voice</button>
+            </div>
+
+            <!-- SMS Setup Card -->
+            <div class="setup-card" id="sms-card" onclick="startSMSSetup()">
+                <div class="setup-icon">💬</div>
+                <div class="setup-title">SMS Messaging</div>
+                <div class="setup-status status-ready" id="sms-status">Ready to configure</div>
+                <div class="setup-description">
+                    Send and receive text messages (MMS supported)
+                </div>
+                <button class="setup-btn" id="sms-btn">Configure SMS</button>
+            </div>
+        </div>
+
+        <div class="skip-setup">
+            <a href="/" id="skip-link">Skip setup - I'll configure later</a>
+        </div>
+
+        <div class="reset-section">
+            <p style="color: #666; font-size: 14px; margin-bottom: 10px;">
+                Already configured? Reset all settings to start over.
+            </p>
+            <button class="reset-btn" onclick="showResetModal()">Reset Configuration</button>
+        </div>
+    </div>
+
+    <!-- Reset Confirmation Modal -->
+    <div class="modal" id="reset-modal">
+        <div class="modal-content">
+            <h2 style="color: #ef4444; margin-bottom: 10px;">⚠️ Reset Configuration?</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                This will delete all your Twilio configurations, phone numbers, and settings. This action cannot be undone.
+            </p>
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="hideResetModal()">Cancel</button>
+                <button class="modal-confirm" onclick="confirmReset()">Reset Everything</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let setupStatus = {
+            voice_setup_completed: false,
+            sms_setup_completed: false
+        };
+
+        // Load status on page load
+        async function loadStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                setupStatus = data;
+
+                // Update UI based on status
+                if (data.voice_setup_completed) {
+                    document.getElementById('voice-status').textContent = 'Configured ✓';
+                    document.getElementById('voice-status').className = 'setup-status status-completed';
+                    document.getElementById('voice-btn').textContent = 'Reconfigure';
+                    document.getElementById('voice-btn').className = 'setup-btn completed';
+                }
+
+                if (data.sms_setup_completed) {
+                    document.getElementById('sms-status').textContent = 'Configured ✓';
+                    document.getElementById('sms-status').className = 'setup-status status-completed';
+                    document.getElementById('sms-btn').textContent = 'Reconfigure';
+                    document.getElementById('sms-btn').className = 'setup-btn completed';
+                }
+
+                // Update skip link
+                if (data.voice_setup_completed || data.sms_setup_completed) {
+                    document.getElementById('skip-link').textContent = 'Go to App';
+                }
+            } catch (error) {
+                console.error('Failed to load status:', error);
+            }
+        }
+
+        function startVoiceSetup() {
+            // TODO: Navigate to voice wizard
+            alert('Voice setup wizard will be implemented in Session 2');
+        }
+
+        function startSMSSetup() {
+            // TODO: Navigate to SMS wizard
+            alert('SMS setup wizard will be implemented in Session 3');
+        }
+
+        function showResetModal() {
+            document.getElementById('reset-modal').classList.add('active');
+        }
+
+        function hideResetModal() {
+            document.getElementById('reset-modal').classList.remove('active');
+        }
+
+        async function confirmReset() {
+            try {
+                const response = await fetch('/api/reset', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert('Configuration reset successfully!');
+                    hideResetModal();
+                    location.reload();
+                } else {
+                    alert('Failed to reset: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Failed to reset: ' + error.message);
+            }
+        }
+
+        // Load status when page loads
+        loadStatus();
+    </script>
+</body>
+</html>

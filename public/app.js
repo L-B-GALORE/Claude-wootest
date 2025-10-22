@@ -73,6 +73,13 @@ async function init() {
         const response = await fetch('/api/status');
         const data = await response.json();
 
+        // Check if we need to redirect to setup page
+        if (!data.voice_setup_completed && !data.sms_setup_completed && !data.initialized) {
+            // No setup completed - redirect to setup page
+            window.location.href = '/setup.html';
+            return;
+        }
+
         if (data.initialized) {
             // Already initialized, show phone screen
             setupScreen.classList.add('hidden');

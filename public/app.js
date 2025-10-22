@@ -1,6 +1,6 @@
 // Global variables
 let device;
-let currentConnection;
+let currentCall;
 let isMuted = false;
 let callTimer;
 let callStartTime;
@@ -133,7 +133,7 @@ setupForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Initialize Twilio Device
+// Initialize Twilio Device with SDK 2.x
 async function initializePhone() {
     try {
         showStatus('Connecting to Twilio...');
@@ -145,17 +145,22 @@ async function initializePhone() {
             throw new Error(data.error);
         }
 
-        // Initialize Twilio Device
-        device = new Twilio.Device(data.token, {
+        // Initialize Twilio Device (SDK 2.x)
+        const { Device } = Twilio;
+        device = new Device(data.token, {
             codecPreferences: ['opus', 'pcmu'],
-            fakeLocalDTMF: true,
-            enableRingingState: true
+            enableImprovedSignalingErrorPrecision: true
         });
 
-        // Device event handlers
-        device.on('ready', () => {
+        // Device event handlers for SDK 2.x
+        device.on('registered', () => {
+            console.log('Device registered');
             showStatus('Ready to make and receive calls', false);
             showState('idle');
+        });
+
+        device.on('unregistered', () => {
+            console.log('Device unregistered');
         });
 
         device.on('error', (error) => {
@@ -164,52 +169,71 @@ async function initializePhone() {
             showStatus(`Error: ${error.message}`, true);
         });
 
-        device.on('connect', (conn) => {
-            console.log('Call connected');
-            currentConnection = conn;
-            showState('active');
-            startCallTimer();
-
-            // Get the phone number
-            const params = conn.customParameters || {};
-            const number = params.To || conn.parameters.To || 'Unknown';
-            activeNumber.textContent = number;
-        });
-
-        device.on('disconnect', () => {
-            console.log('Call disconnected');
-            currentConnection = null;
-            stopCallTimer();
-            isMuted = false;
-            muteBtn.textContent = '🔇 Mute';
-            muteBtn.classList.remove('active');
-            showState('idle');
-            phoneInput.value = '';
-        });
-
-        device.on('incoming', (conn) => {
-            console.log('Incoming call');
-            currentConnection = conn;
+        device.on('incoming', (call) => {
+            console.log('Incoming call from:', call.parameters.From);
+            currentCall = call;
 
             // Get caller info
-            const from = conn.parameters.From || 'Unknown';
+            const from = call.parameters.From || 'Unknown';
             callerNumber.textContent = from;
 
             showState('incoming');
 
-            // Handle disconnect during ringing
-            conn.on('disconnect', () => {
-                if (incomingState.classList.contains('hidden') === false) {
-                    showState('idle');
-                }
-            });
+            // Set up call event handlers
+            setupCallHandlers(call);
         });
+
+        // Register the device
+        await device.register();
 
     } catch (error) {
         console.error('Phone initialization error:', error);
         logError(error, { function: 'initializePhone' });
         showStatus(`Error: ${error.message}`, true);
     }
+}
+
+// Set up event handlers for a call
+function setupCallHandlers(call) {
+    call.on('accept', () => {
+        console.log('Call accepted');
+        currentCall = call;
+        showState('active');
+        startCallTimer();
+
+        // Get the phone number
+        const number = call.parameters.To || call.parameters.From || 'Unknown';
+        activeNumber.textContent = number;
+    });
+
+    call.on('disconnect', () => {
+        console.log('Call disconnected');
+        currentCall = null;
+        stopCallTimer();
+        isMuted = false;
+        muteBtn.textContent = '🔇 Mute';
+        muteBtn.classList.remove('active');
+        showState('idle');
+        phoneInput.value = '';
+    });
+
+    call.on('reject', () => {
+        console.log('Call rejected');
+        currentCall = null;
+        showState('idle');
+    });
+
+    call.on('cancel', () => {
+        console.log('Call cancelled');
+        if (incomingState.classList.contains('hidden') === false) {
+            showState('idle');
+        }
+    });
+
+    call.on('error', (error) => {
+        console.error('Call error:', error);
+        logError(error, { source: 'twilio_call' });
+    });
 }
 
 // Dialpad handlers
@@ -223,8 +247,8 @@ document.querySelectorAll('.dial-btn').forEach(btn => {
 document.querySelectorAll('.dial-btn-small').forEach(btn => {
     btn.addEventListener('click', () => {
         const digit = btn.dataset.digit;
-        if (currentConnection) {
-            currentConnection.sendDigits(digit);
+        if (currentCall) {
+            currentCall.sendDigits(digit);
         }
     });
 });
@@ -241,8 +265,14 @@ callBtn.addEventListener('click', async () => {
         const params = {
             To: number
         };
-        await device.connect(params);
+
+        // Connect returns a Call object in SDK 2.x
+        currentCall = await device.connect({ params });
         console.log('Calling:', number);
+
+        // Set up handlers for the outbound call
+        setupCallHandlers(currentCall);
+
     } catch (error) {
         console.error('Call error:', error);
         logError(error, { function: 'makeCall', number });
@@ -252,28 +282,26 @@ callBtn.addEventListener('click', async () => {
 
 // Answer button
 answerBtn.addEventListener('click', () => {
-    if (currentConnection) {
-        currentConnection.accept();
-        const from = currentConnection.parameters.From || 'Unknown';
-        activeNumber.textContent = from;
+    if (currentCall) {
+        currentCall.accept();
     }
 });
 
 // Reject button
 rejectBtn.addEventListener('click', () => {
-    if (currentConnection) {
-        currentConnection.reject();
-        currentConnection = null;
+    if (currentCall) {
+        currentCall.reject();
+        currentCall = null;
         showState('idle');
     }
 });
 
 // Mute button
 muteBtn.addEventListener('click', () => {
-    if (!currentConnection) return;
+    if (!currentCall) return;
 
     isMuted = !isMuted;
-    currentConnection.mute(isMuted);
+    currentCall.mute(isMuted);
 
     if (isMuted) {
         muteBtn.textContent = '🔊 Unmute';
@@ -286,8 +314,8 @@ muteBtn.addEventListener('click', () => {
 
 // Hangup button
 hangupBtn.addEventListener('click', () => {
-    if (currentConnection) {
-        currentConnection.disconnect();
+    if (currentCall) {
+        currentCall.disconnect();
     }
 });
 

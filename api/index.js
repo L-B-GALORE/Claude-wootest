@@ -59,9 +59,12 @@ async function autoProvision(accountSid, authToken, baseUrl) {
   const client = twilio(accountSid, authToken);
 
   try {
+    // Create timestamp for friendly names
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+
     // Create TwiML App
     const twimlApp = await client.applications.create({
-      friendlyName: 'Browser Phone App',
+      friendlyName: `Browser Phone App ${timestamp}`,
       voiceUrl: `${baseUrl}/voice`,
       voiceMethod: 'POST',
       statusCallback: `${baseUrl}/status`,
@@ -70,7 +73,7 @@ async function autoProvision(accountSid, authToken, baseUrl) {
 
     // Create API Key
     const apiKey = await client.newKeys.create({
-      friendlyName: 'Browser Phone API Key'
+      friendlyName: `Browser Phone API Key ${timestamp}`
     });
 
     return {

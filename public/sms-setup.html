@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Setup - Twilio Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .wizard-container {
+            max-width: 600px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .wizard-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .wizard-header h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+        }
+
+        .wizard-header p {
+            color: #666;
+            margin: 0;
+        }
+
+        .progress-bar {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 40px;
+            gap: 20px;
+        }
+
+        .progress-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .progress-step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #999;
+            transition: all 0.3s;
+        }
+
+        .progress-step.active .progress-step-circle {
+            background: #667eea;
+            color: white;
+        }
+
+        .progress-step.completed .progress-step-circle {
+            background: #10b981;
+            color: white;
+        }
+
+        .progress-step-label {
+            font-size: 14px;
+            color: #999;
+        }
+
+        .progress-step.active .progress-step-label {
+            color: #667eea;
+            font-weight: 500;
+        }
+
+        .wizard-step {
+            display: none;
+        }
+
+        .wizard-step.active {
+            display: block;
+        }
+
+        .wizard-step h2 {
+            color: #333;
+            margin: 0 0 20px 0;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .wizard-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .btn-back {
+            flex: 1;
+            padding: 12px 24px;
+            background: #e0e0e0;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-back:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-next {
+            flex: 2;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-next:hover {
+            background: #5568d3;
+        }
+
+        .btn-next:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status-message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .status-message.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #90caf9;
+        }
+
+        .status-message.error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+        }
+
+        .status-message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #a5d6a7;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .success-icon {
+            font-size: 60px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .success-message {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .success-message h2 {
+            color: #10b981;
+            margin-bottom: 10px;
+        }
+
+        .success-message p {
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="wizard-container">
+        <div class="wizard-header">
+            <h1>💬 SMS Setup Wizard</h1>
+            <p>Set up SMS messaging in 2 easy steps</p>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar">
+            <div class="progress-step active" id="progress-1">
+                <div class="progress-step-circle">1</div>
+                <div class="progress-step-label">Credentials</div>
+            </div>
+            <div class="progress-step" id="progress-2">
+                <div class="progress-step-circle">2</div>
+                <div class="progress-step-label">Complete</div>
+            </div>
+        </div>
+
+        <!-- Step 1: Credentials -->
+        <div class="wizard-step active" id="step-1">
+            <h2>Step 1: Enter Twilio Credentials</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Enter your Twilio Account SID and Auth Token to enable SMS features.
+            </p>
+
+            <div id="step1-message"></div>
+
+            <div class="form-group">
+                <label for="accountSid">Account SID</label>
+                <input type="text" id="accountSid" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+            </div>
+
+            <div class="form-group">
+                <label for="authToken">Auth Token</label>
+                <input type="password" id="authToken" placeholder="Your auth token" required>
+            </div>
+
+            <div class="wizard-buttons">
+                <button class="btn-back" onclick="window.location.href='/setup.html'">← Back</button>
+                <button class="btn-next" onclick="validateCredentials()">Next →</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Complete -->
+        <div class="wizard-step" id="step-2">
+            <h2>Step 2: SMS Setup Complete</h2>
+            <div id="step2-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Setting up SMS...</p>
+                </div>
+
+                <div id="config-status"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        let credentials = {};
+
+        function goToStep(step) {
+            // Hide all steps
+            document.querySelectorAll('.wizard-step').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.progress-step').forEach(el => el.classList.remove('active'));
+
+            // Mark completed steps
+            for (let i = 1; i < step; i++) {
+                document.getElementById(`progress-${i}`).classList.add('completed');
+            }
+
+            // Show current step
+            document.getElementById(`step-${step}`).classList.add('active');
+            document.getElementById(`progress-${step}`).classList.add('active');
+            currentStep = step;
+
+            // Auto-start configuration on step 2
+            if (step === 2) {
+                completeSMSSetup();
+            }
+        }
+
+        async function validateCredentials() {
+            const accountSid = document.getElementById('accountSid').value.trim();
+            const authToken = document.getElementById('authToken').value.trim();
+            const messageDiv = document.getElementById('step1-message');
+
+            if (!accountSid || !authToken) {
+                messageDiv.innerHTML = '<div class="status-message error">Please enter both Account SID and Auth Token</div>';
+                return;
+            }
+
+            messageDiv.innerHTML = '<div class="status-message info">Validating credentials...</div>';
+
+            try {
+                // Use same endpoint as voice wizard for credential validation
+                const response = await fetch('/api/setup/voice/credentials', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accountSid, authToken })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    credentials = { accountSid, authToken };
+                    goToStep(2);
+                } else {
+                    messageDiv.innerHTML = `<div class="status-message error">Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="status-message error">Failed to validate: ${error.message}</div>`;
+            }
+        }
+
+        async function completeSMSSetup() {
+            const statusDiv = document.getElementById('config-status');
+            const loadingDiv = document.querySelector('#step2-content .loading');
+
+            try {
+                statusDiv.innerHTML = '<p>⏳ Enabling SMS features...</p>';
+
+                const response = await fetch('/api/setup/sms/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        accountSid: credentials.accountSid,
+                        authToken: credentials.authToken
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Hide loading spinner
+                    if (loadingDiv) loadingDiv.style.display = 'none';
+
+                    statusDiv.innerHTML = `
+                        <div class="success-icon">✅</div>
+                        <div class="success-message">
+                            <h2>SMS Setup Complete!</h2>
+                            <p>Your account is now configured for SMS messaging. You can now configure phone numbers to send and receive SMS.</p>
+                        </div>
+                        <p style="color: #10b981;">✓ SMS features enabled</p>
+                    `;
+
+                    // Add button to go to phone numbers page
+                    setTimeout(() => {
+                        const btnDiv = document.createElement('div');
+                        btnDiv.className = 'wizard-buttons';
+                        btnDiv.innerHTML = '<button class="btn-next" onclick="window.location.href=\'/numbers.html?wizard=sms\'">Configure Phone Numbers</button>';
+                        document.getElementById('step2-content').appendChild(btnDiv);
+                    }, 1000);
+                } else {
+                    if (loadingDiv) loadingDiv.style.display = 'none';
+                    statusDiv.innerHTML = `<div class="status-message error">Setup failed: ${data.error}</div>`;
+                }
+            } catch (error) {
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                statusDiv.innerHTML = `<div class="status-message error">Setup failed: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

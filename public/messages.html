@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Messages - Twilio Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .messages-container {
+            display: flex;
+            height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+        }
+
+        .conversations-sidebar {
+            width: 350px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: #667eea;
+            color: white;
+        }
+
+        .sidebar-header h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .nav-links a:hover {
+            opacity: 1;
+            text-decoration: underline;
+        }
+
+        .conversations-list {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .conversation-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .conversation-item:hover {
+            background: #f8f9fa;
+        }
+
+        .conversation-item.active {
+            background: #e3f2fd;
+            border-left: 3px solid #667eea;
+        }
+
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .conversation-phone {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .conversation-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .conversation-preview {
+            color: #666;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .unread-badge {
+            display: inline-block;
+            background: #ef4444;
+            color: white;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+
+        .empty-conversations {
+            padding: 40px 20px;
+            text-align: center;
+            color: #999;
+        }
+
+        .message-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .message-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+            background: white;
+        }
+
+        .message-header h2 {
+            margin: 0;
+            color: #333;
+            font-size: 20px;
+        }
+
+        .message-actions {
+            margin-top: 10px;
+        }
+
+        .btn-delete {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .btn-delete:hover {
+            background: #dc2626;
+        }
+
+        .messages-thread {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            margin-bottom: 15px;
+            clear: both;
+        }
+
+        .message-bubble.outbound {
+            float: right;
+        }
+
+        .message-bubble.inbound {
+            float: left;
+        }
+
+        .bubble-content {
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message-bubble.outbound .bubble-content {
+            background: #667eea;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message-bubble.inbound .bubble-content {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-media {
+            margin-top: 8px;
+        }
+
+        .message-media img {
+            max-width: 100%;
+            border-radius: 8px;
+        }
+
+        .message-meta {
+            font-size: 11px;
+            margin-top: 4px;
+            opacity: 0.7;
+        }
+
+        .message-bubble.outbound .message-meta {
+            text-align: right;
+        }
+
+        .compose-area {
+            padding: 20px;
+            border-top: 1px solid #e0e0e0;
+            background: white;
+        }
+
+        .compose-form {
+            display: flex;
+            gap: 10px;
+        }
+
+        .compose-input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 14px;
+            resize: none;
+            font-family: inherit;
+        }
+
+        .compose-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-send {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn-send:hover {
+            background: #5568d3;
+        }
+
+        .btn-send:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .char-counter {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .empty-selection {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            font-size: 18px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .new-conversation-btn {
+            padding: 12px 20px;
+            margin: 15px 20px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .new-conversation-btn:hover {
+            background: #059669;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .modal-content h2 {
+            margin: 0 0 20px 0;
+        }
+
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .modal-cancel {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .modal-confirm {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="messages-container">
+        <!-- Conversations Sidebar -->
+        <div class="conversations-sidebar">
+            <div class="sidebar-header">
+                <h1>💬 Messages</h1>
+                <div class="nav-links">
+                    <a href="/setup.html">⚙️ Setup</a>
+                    <a href="/numbers.html">📱 Numbers</a>
+                    <a href="/">📞 Phone</a>
+                </div>
+            </div>
+
+            <button class="new-conversation-btn" onclick="showNewConversationModal()">+ New Message</button>
+
+            <div class="conversations-list" id="conversations-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading conversations...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message Panel -->
+        <div class="message-panel">
+            <div id="message-view" class="empty-selection">
+                Select a conversation to view messages
+            </div>
+        </div>
+    </div>
+
+    <!-- New Conversation Modal -->
+    <div class="modal" id="new-conversation-modal">
+        <div class="modal-content">
+            <h2>New Message</h2>
+            <input type="tel" id="new-phone-number" placeholder="Enter phone number (e.g., +1234567890)">
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="hideNewConversationModal()">Cancel</button>
+                <button class="modal-confirm" onclick="startNewConversation()">Start Chat</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let conversations = [];
+        let currentConversation = null;
+        let messages = [];
+        let autoRefreshInterval = null;
+
+        async function loadConversations() {
+            try {
+                const response = await fetch('/api/conversations');
+                const data = await response.json();
+
+                conversations = data.conversations || [];
+                renderConversations();
+            } catch (error) {
+                console.error('Failed to load conversations:', error);
+                document.getElementById('conversations-list').innerHTML =
+                    '<div class="empty-conversations">Failed to load conversations</div>';
+            }
+        }
+
+        function renderConversations() {
+            const listDiv = document.getElementById('conversations-list');
+
+            if (conversations.length === 0) {
+                listDiv.innerHTML = '<div class="empty-conversations">No conversations yet<br>Click "New Message" to start</div>';
+                return;
+            }
+
+            listDiv.innerHTML = conversations.map(conv => `
+                <div class="conversation-item ${currentConversation === conv.phone_number ? 'active' : ''}"
+                     onclick="selectConversation('${conv.phone_number}')">
+                    <div class="conversation-header">
+                        <div class="conversation-phone">
+                            ${conv.phone_number}
+                            ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
+                        </div>
+                        <div class="conversation-time">${formatTime(conv.last_message_time)}</div>
+                    </div>
+                    <div class="conversation-preview">${conv.last_message}</div>
+                </div>
+            `).join('');
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+
+            return date.toLocaleDateString();
+        }
+
+        async function selectConversation(phoneNumber) {
+            currentConversation = phoneNumber;
+            renderConversations();
+
+            // Mark as read
+            await fetch(`/api/conversations/${encodeURIComponent(phoneNumber)}/mark-read`, {
+                method: 'POST'
+            });
+
+            // Load messages
+            await loadMessages(phoneNumber);
+        }
+
+        async function loadMessages(phoneNumber) {
+            const viewDiv = document.getElementById('message-view');
+
+            try {
+                const response = await fetch(`/api/conversations/${encodeURIComponent(phoneNumber)}/messages`);
+                const data = await response.json();
+
+                messages = data.messages || [];
+                renderMessageThread(phoneNumber);
+            } catch (error) {
+                console.error('Failed to load messages:', error);
+                viewDiv.innerHTML = '<div class="empty-selection">Failed to load messages</div>';
+            }
+        }
+
+        function renderMessageThread(phoneNumber) {
+            const viewDiv = document.getElementById('message-view');
+
+            viewDiv.innerHTML = `
+                <div class="message-header">
+                    <h2>${phoneNumber}</h2>
+                    <div class="message-actions">
+                        <button class="btn-delete" onclick="deleteConversation('${phoneNumber}')">Delete Conversation</button>
+                    </div>
+                </div>
+                <div class="messages-thread" id="messages-thread"></div>
+                <div class="compose-area">
+                    <div class="compose-form">
+                        <textarea
+                            class="compose-input"
+                            id="message-input"
+                            placeholder="Type a message..."
+                            rows="1"
+                            onkeypress="handleKeyPress(event)"></textarea>
+                        <button class="btn-send" onclick="sendMessage()">Send</button>
+                    </div>
+                    <div class="char-counter" id="char-counter">0 characters</div>
+                </div>
+            `;
+
+            renderMessages();
+
+            // Auto-resize textarea
+            const textarea = document.getElementById('message-input');
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+                document.getElementById('char-counter').textContent = `${this.value.length} characters`;
+            });
+        }
+
+        function renderMessages() {
+            const threadDiv = document.getElementById('messages-thread');
+            if (!threadDiv) return;
+
+            // Sort messages by timestamp
+            const sortedMessages = [...messages].sort((a, b) =>
+                new Date(a.timestamp) - new Date(b.timestamp)
+            );
+
+            threadDiv.innerHTML = sortedMessages.map(msg => {
+                const mediaHtml = msg.media && msg.media.length > 0
+                    ? `<div class="message-media">
+                        ${msg.media.map(m => `<img src="${m.url}" alt="Image">`).join('')}
+                       </div>`
+                    : '';
+
+                return `
+                    <div class="message-bubble ${msg.direction}">
+                        <div class="bubble-content">
+                            ${msg.body}
+                            ${mediaHtml}
+                        </div>
+                        <div class="message-meta">
+                            ${formatTime(msg.timestamp)} • ${msg.status || 'sent'}
+                        </div>
+                    </div>
+                `;
+            }).join('') + '<div style="clear: both;"></div>';
+
+            // Scroll to bottom
+            setTimeout(() => {
+                threadDiv.scrollTop = threadDiv.scrollHeight;
+            }, 100);
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            if (!currentConversation) return;
+
+            const input = document.getElementById('message-input');
+            const body = input.value.trim();
+
+            if (!body) return;
+
+            try {
+                const response = await fetch(`/api/conversations/${encodeURIComponent(currentConversation)}/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ body })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    input.value = '';
+                    input.style.height = 'auto';
+                    document.getElementById('char-counter').textContent = '0 characters';
+
+                    // Reload messages
+                    await loadMessages(currentConversation);
+                    await loadConversations();
+                } else {
+                    alert('Failed to send message: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Failed to send message: ' + error.message);
+            }
+        }
+
+        async function deleteConversation(phoneNumber) {
+            if (!confirm(`Delete conversation with ${phoneNumber}?`)) return;
+
+            try {
+                const response = await fetch(`/api/conversations/${encodeURIComponent(phoneNumber)}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    currentConversation = null;
+                    await loadConversations();
+                    document.getElementById('message-view').innerHTML =
+                        '<div class="empty-selection">Select a conversation to view messages</div>';
+                }
+            } catch (error) {
+                alert('Failed to delete conversation: ' + error.message);
+            }
+        }
+
+        function showNewConversationModal() {
+            document.getElementById('new-conversation-modal').classList.add('active');
+        }
+
+        function hideNewConversationModal() {
+            document.getElementById('new-conversation-modal').classList.remove('active');
+            document.getElementById('new-phone-number').value = '';
+        }
+
+        function startNewConversation() {
+            const phoneNumber = document.getElementById('new-phone-number').value.trim();
+
+            if (!phoneNumber) {
+                alert('Please enter a phone number');
+                return;
+            }
+
+            hideNewConversationModal();
+            selectConversation(phoneNumber);
+        }
+
+        // Auto-refresh every 5 seconds
+        function startAutoRefresh() {
+            autoRefreshInterval = setInterval(async () => {
+                await loadConversations();
+                if (currentConversation) {
+                    await loadMessages(currentConversation);
+                }
+            }, 5000);
+        }
+
+        // Load conversations on page load
+        loadConversations().then(() => {
+            startAutoRefresh();
+        });
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', () => {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>

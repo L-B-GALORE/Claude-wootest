@@ -1,0 +1,350 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.screen {
+    width: 100%;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.container {
+    max-width: 400px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 24px;
+}
+
+p {
+    text-align: center;
+    color: #666;
+    margin-bottom: 30px;
+    font-size: 14px;
+}
+
+/* Setup Form */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #333;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+#setup-status {
+    margin-top: 20px;
+    padding: 12px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 14px;
+}
+
+#setup-status.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+#setup-status.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Status Display */
+.status {
+    text-align: center;
+    padding: 12px;
+    background: #f0f0f0;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: #666;
+}
+
+.status.ready {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* Phone Display */
+.phone-display {
+    margin-bottom: 20px;
+}
+
+.phone-number-input {
+    width: 100%;
+    padding: 15px;
+    font-size: 24px;
+    text-align: center;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-weight: 300;
+}
+
+.phone-number-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+/* Dialpad */
+.dialpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.dial-btn {
+    padding: 20px;
+    font-size: 24px;
+    font-weight: 300;
+    background: #f5f5f5;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+}
+
+.dial-btn span {
+    font-size: 10px;
+    color: #999;
+    margin-top: 2px;
+}
+
+.dial-btn:hover {
+    background: #e0e0e0;
+}
+
+.dial-btn:active {
+    transform: scale(0.95);
+}
+
+/* Small dialpad for active call */
+.dialpad-small {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.dial-btn-small {
+    padding: 12px;
+    font-size: 18px;
+    font-weight: 300;
+    background: #f5f5f5;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.dial-btn-small:hover {
+    background: #e0e0e0;
+}
+
+.dial-btn-small:active {
+    transform: scale(0.95);
+}
+
+/* Buttons */
+.btn {
+    padding: 15px 30px;
+    font-size: 16px;
+    font-weight: 500;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s;
+    width: 100%;
+}
+
+.btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #5568d3;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-call {
+    background: #10b981;
+    color: white;
+    font-size: 18px;
+}
+
+.btn-call:hover {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+}
+
+.btn-hangup {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-hangup:hover {
+    background: #dc2626;
+}
+
+.btn-answer {
+    background: #10b981;
+    color: white;
+    flex: 1;
+}
+
+.btn-answer:hover {
+    background: #059669;
+}
+
+.btn-reject {
+    background: #ef4444;
+    color: white;
+    flex: 1;
+}
+
+.btn-reject:hover {
+    background: #dc2626;
+}
+
+.btn-control {
+    background: #6b7280;
+    color: white;
+}
+
+.btn-control:hover {
+    background: #4b5563;
+}
+
+.btn-control.active {
+    background: #ef4444;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+/* Incoming Call */
+.incoming-call {
+    text-align: center;
+    padding: 20px;
+}
+
+.caller-info {
+    margin-bottom: 30px;
+}
+
+.caller-label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.caller-number {
+    font-size: 32px;
+    font-weight: 300;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.incoming-actions {
+    display: flex;
+    gap: 15px;
+}
+
+/* Active Call */
+.call-info {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.call-status {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.active-number {
+    font-size: 28px;
+    font-weight: 300;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.call-timer {
+    font-size: 18px;
+    color: #999;
+}
+
+.call-controls {
+    display: flex;
+    gap: 10px;
+}
+
+/* Animations */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.incoming-call {
+    animation: pulse 2s infinite;
+}

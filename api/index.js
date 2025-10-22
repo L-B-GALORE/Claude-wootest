@@ -369,7 +369,7 @@ app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
     const baseUrl = `${protocol}://${host}`;
 
     // Configure phone number for voice
-    const client = twilio(account.account_sid, account.auth_token);
+    const client = twilio(account.accountSid, account.authToken);
     await client.incomingPhoneNumbers(sid).update({
       voiceUrl: `${baseUrl}/voice`,
       voiceMethod: 'POST',
@@ -420,7 +420,7 @@ app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
     const baseUrl = `${protocol}://${host}`;
 
     // Configure phone number for SMS
-    const client = twilio(account.account_sid, account.auth_token);
+    const client = twilio(account.accountSid, account.authToken);
     await client.incomingPhoneNumbers(sid).update({
       smsUrl: `${baseUrl}/sms`,
       smsMethod: 'POST',
@@ -498,7 +498,7 @@ app.post('/api/numbers/:sid/validate', async (req, res) => {
     const baseUrl = `${protocol}://${host}`;
 
     // Fetch actual configuration from Twilio
-    const client = twilio(account.account_sid, account.auth_token);
+    const client = twilio(account.accountSid, account.authToken);
     const twilioNumber = await client.incomingPhoneNumbers(sid).fetch();
 
     // Validate voice configuration

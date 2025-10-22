@@ -360,6 +360,7 @@
 
         async function configureVoice() {
             const statusDiv = document.getElementById('config-status');
+            const loadingDiv = document.querySelector('#step2-content .loading');
 
             try {
                 statusDiv.innerHTML = `
@@ -379,6 +380,9 @@
                 const data = await response.json();
 
                 if (response.ok) {
+                    // Hide loading spinner
+                    if (loadingDiv) loadingDiv.style.display = 'none';
+
                     statusDiv.innerHTML = `
                         <div class="success-icon">✅</div>
                         <div class="success-message">
@@ -393,13 +397,15 @@
                     setTimeout(() => {
                         const btnDiv = document.createElement('div');
                         btnDiv.className = 'wizard-buttons';
-                        btnDiv.innerHTML = '<button class="btn-next" onclick="window.location.href=\'/numbers?wizard=voice\'">Configure Phone Numbers</button>';
+                        btnDiv.innerHTML = '<button class="btn-next" onclick="window.location.href=\'/numbers.html?wizard=voice\'">Configure Phone Numbers</button>';
                         document.getElementById('step2-content').appendChild(btnDiv);
                     }, 1000);
                 } else {
+                    if (loadingDiv) loadingDiv.style.display = 'none';
                     statusDiv.innerHTML = `<div class="status-message error">Configuration failed: ${data.error}</div>`;
                 }
             } catch (error) {
+                if (loadingDiv) loadingDiv.style.display = 'none';
                 statusDiv.innerHTML = `<div class="status-message error">Configuration failed: ${error.message}</div>`;
             }
         }

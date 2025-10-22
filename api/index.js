@@ -240,9 +240,9 @@ app.post('/api/setup/voice/credentials', async (req, res) => {
 // Voice Setup: Complete configuration
 app.post('/api/setup/voice/complete', async (req, res) => {
   try {
-    const { accountSid, authToken, phoneNumberSid, phoneNumber } = req.body;
+    const { accountSid, authToken } = req.body;
 
-    if (!accountSid || !authToken || !phoneNumberSid || !phoneNumber) {
+    if (!accountSid || !authToken) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -253,40 +253,20 @@ app.post('/api/setup/voice/complete', async (req, res) => {
     // Auto-provision TwiML App and API Keys
     const provisioned = await autoProvision(accountSid, authToken, baseUrl);
 
-    // Configure phone number webhook
-    const client = twilio(accountSid, authToken);
-    await client.incomingPhoneNumbers(phoneNumberSid).update({
-      voiceUrl: `${baseUrl}/voice`,
-      voiceMethod: 'POST'
-    });
-
-    // Save TwiML app data
+    // Save TwiML app data with all required URLs for validation
     await kv.set('twiml_app', {
       sid: provisioned.twimlAppSid,
       api_key: provisioned.apiKey,
       api_secret: provisioned.apiSecret,
+      voice_url: `${baseUrl}/voice`,
+      voice_method: 'POST',
+      status_callback: `${baseUrl}/status`,
+      status_callback_method: 'POST',
       app_url: baseUrl,
       created_at: new Date().toISOString(),
       last_validated: new Date().toISOString(),
       is_valid: true
     });
-
-    // Save phone numbers array
-    const phoneNumbers = [{
-      sid: phoneNumberSid,
-      phone_number: phoneNumber,
-      friendly_name: '',
-      voice_config: {
-        webhook_url: `${baseUrl}/voice`,
-        webhook_configured: true,
-        last_validated: new Date().toISOString(),
-        is_valid: true
-      },
-      sms_config: {
-        webhook_configured: false
-      }
-    }];
-    await kv.set('phone_numbers', phoneNumbers);
 
     // Update account to mark voice setup as completed
     const account = await kv.get('twilio_account');
@@ -295,25 +275,334 @@ app.post('/api/setup/voice/complete', async (req, res) => {
       voice_setup_completed: true
     });
 
-    // Also save in old format for backward compatibility
-    await saveConfig({
-      accountSid,
-      authToken,
-      phoneNumber,
-      twimlAppSid: provisioned.twimlAppSid,
-      apiKey: provisioned.apiKey,
-      apiSecret: provisioned.apiSecret,
-      initialized: true,
-      baseUrl
-    });
-
     res.json({
       success: true,
-      message: 'Voice configuration completed successfully',
+      message: 'Voice account setup completed successfully',
       twimlAppSid: provisioned.twimlAppSid
     });
   } catch (error) {
     await logError('backend', error, { endpoint: '/api/setup/voice/complete' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Phone Number Management Endpoints
+
+// Get all phone numbers
+app.get('/api/numbers', async (req, res) => {
+  try {
+    const numbers = await kv.get('phone_numbers') || [];
+    res.json({ numbers });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add phone number
+app.post('/api/numbers/add', async (req, res) => {
+  try {
+    const { sid, phoneNumber, friendlyName } = req.body;
+
+    if (!sid || !phoneNumber) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const numbers = await kv.get('phone_numbers') || [];
+
+    // Check if number already exists
+    if (numbers.find(n => n.sid === sid)) {
+      return res.status(400).json({ error: 'Phone number already added' });
+    }
+
+    // Add new number with default configuration
+    numbers.push({
+      sid,
+      phone_number: phoneNumber,
+      friendly_name: friendlyName || '',
+      voice_config: {
+        webhook_configured: false,
+        issues: []
+      },
+      sms_config: {
+        webhook_configured: false,
+        issues: []
+      },
+      added_at: new Date().toISOString()
+    });
+
+    await kv.set('phone_numbers', numbers);
+
+    res.json({
+      success: true,
+      message: 'Phone number added successfully'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/add' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Configure voice for a number
+app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
+  try {
+    const { sid } = req.params;
+    const numbers = await kv.get('phone_numbers') || [];
+    const numberIndex = numbers.findIndex(n => n.sid === sid);
+
+    if (numberIndex === -1) {
+      return res.status(404).json({ error: 'Phone number not found' });
+    }
+
+    const account = await kv.get('twilio_account');
+    const twimlApp = await kv.get('twiml_app');
+
+    if (!account || !twimlApp) {
+      return res.status(400).json({ error: 'Voice not set up. Please complete voice wizard first.' });
+    }
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    // Configure phone number for voice
+    const client = twilio(account.account_sid, account.auth_token);
+    await client.incomingPhoneNumbers(sid).update({
+      voiceUrl: `${baseUrl}/voice`,
+      voiceMethod: 'POST',
+      voiceApplicationSid: twimlApp.sid
+    });
+
+    // Update number configuration
+    numbers[numberIndex].voice_config = {
+      webhook_url: `${baseUrl}/voice`,
+      webhook_method: 'POST',
+      twiml_app_sid: twimlApp.sid,
+      webhook_configured: true,
+      configured_at: new Date().toISOString(),
+      issues: []
+    };
+
+    await kv.set('phone_numbers', numbers);
+
+    res.json({
+      success: true,
+      message: 'Voice configured successfully'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/:sid/configure-voice' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Configure SMS for a number
+app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
+  try {
+    const { sid } = req.params;
+    const numbers = await kv.get('phone_numbers') || [];
+    const numberIndex = numbers.findIndex(n => n.sid === sid);
+
+    if (numberIndex === -1) {
+      return res.status(404).json({ error: 'Phone number not found' });
+    }
+
+    const account = await kv.get('twilio_account');
+
+    if (!account || !account.sms_setup_completed) {
+      return res.status(400).json({ error: 'SMS not set up. Please complete SMS wizard first.' });
+    }
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    // Configure phone number for SMS
+    const client = twilio(account.account_sid, account.auth_token);
+    await client.incomingPhoneNumbers(sid).update({
+      smsUrl: `${baseUrl}/sms`,
+      smsMethod: 'POST',
+      statusCallback: `${baseUrl}/sms-status`,
+      statusCallbackMethod: 'POST'
+    });
+
+    // Update number configuration
+    numbers[numberIndex].sms_config = {
+      webhook_url: `${baseUrl}/sms`,
+      webhook_method: 'POST',
+      status_callback: `${baseUrl}/sms-status`,
+      status_callback_method: 'POST',
+      webhook_configured: true,
+      configured_at: new Date().toISOString(),
+      issues: []
+    };
+
+    await kv.set('phone_numbers', numbers);
+
+    res.json({
+      success: true,
+      message: 'SMS configured successfully'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/:sid/configure-sms' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fix voice configuration
+app.post('/api/numbers/:sid/fix-voice', async (req, res) => {
+  try {
+    // Same as configure-voice - re-apply configuration
+    req.url = `/api/numbers/${req.params.sid}/configure-voice`;
+    return app._router.handle(req, res);
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/:sid/fix-voice' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fix SMS configuration
+app.post('/api/numbers/:sid/fix-sms', async (req, res) => {
+  try {
+    // Same as configure-sms - re-apply configuration
+    req.url = `/api/numbers/${req.params.sid}/configure-sms`;
+    return app._router.handle(req, res);
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/:sid/fix-sms' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate a single number
+app.post('/api/numbers/:sid/validate', async (req, res) => {
+  try {
+    const { sid } = req.params;
+    const numbers = await kv.get('phone_numbers') || [];
+    const numberIndex = numbers.findIndex(n => n.sid === sid);
+
+    if (numberIndex === -1) {
+      return res.status(404).json({ error: 'Phone number not found' });
+    }
+
+    const account = await kv.get('twilio_account');
+    const twimlApp = await kv.get('twiml_app');
+
+    if (!account) {
+      return res.status(400).json({ error: 'Account not configured' });
+    }
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    // Fetch actual configuration from Twilio
+    const client = twilio(account.account_sid, account.auth_token);
+    const twilioNumber = await client.incomingPhoneNumbers(sid).fetch();
+
+    // Validate voice configuration
+    const voiceIssues = [];
+    if (numbers[numberIndex].voice_config && numbers[numberIndex].voice_config.webhook_configured) {
+      if (twilioNumber.voiceUrl !== `${baseUrl}/voice`) {
+        voiceIssues.push('Voice URL mismatch');
+      }
+      if (twilioNumber.voiceMethod !== 'POST') {
+        voiceIssues.push('Voice method should be POST');
+      }
+      if (twimlApp && twilioNumber.voiceApplicationSid !== twimlApp.sid) {
+        voiceIssues.push('TwiML App SID mismatch');
+      }
+    }
+
+    // Validate SMS configuration
+    const smsIssues = [];
+    if (numbers[numberIndex].sms_config && numbers[numberIndex].sms_config.webhook_configured) {
+      if (twilioNumber.smsUrl !== `${baseUrl}/sms`) {
+        smsIssues.push('SMS URL mismatch');
+      }
+      if (twilioNumber.smsMethod !== 'POST') {
+        smsIssues.push('SMS method should be POST');
+      }
+      if (twilioNumber.statusCallback !== `${baseUrl}/sms-status`) {
+        smsIssues.push('SMS status callback mismatch');
+      }
+    }
+
+    // Update issues in database
+    numbers[numberIndex].voice_config = {
+      ...numbers[numberIndex].voice_config,
+      issues: voiceIssues,
+      last_validated: new Date().toISOString()
+    };
+
+    numbers[numberIndex].sms_config = {
+      ...numbers[numberIndex].sms_config,
+      issues: smsIssues,
+      last_validated: new Date().toISOString()
+    };
+
+    await kv.set('phone_numbers', numbers);
+
+    res.json({
+      success: true,
+      message: voiceIssues.length + smsIssues.length === 0
+        ? 'Validation passed - configuration is correct'
+        : `Found ${voiceIssues.length + smsIssues.length} issue(s)`,
+      voiceIssues,
+      smsIssues
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/:sid/validate' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate all numbers
+app.post('/api/numbers/validate-all', async (req, res) => {
+  try {
+    const numbers = await kv.get('phone_numbers') || [];
+
+    let totalIssues = 0;
+    for (const number of numbers) {
+      // Trigger validation for each number
+      const validateRes = await fetch(`${req.protocol}://${req.get('host')}/api/numbers/${number.sid}/validate`, {
+        method: 'POST'
+      });
+      const data = await validateRes.json();
+
+      if (data.voiceIssues) totalIssues += data.voiceIssues.length;
+      if (data.smsIssues) totalIssues += data.smsIssues.length;
+    }
+
+    res.json({
+      success: true,
+      message: totalIssues === 0
+        ? `All ${numbers.length} number(s) validated successfully`
+        : `Validated ${numbers.length} number(s) - found ${totalIssues} issue(s)`
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/validate-all' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a number
+app.delete('/api/numbers/:sid', async (req, res) => {
+  try {
+    const { sid } = req.params;
+    const numbers = await kv.get('phone_numbers') || [];
+    const filtered = numbers.filter(n => n.sid !== sid);
+
+    if (filtered.length === numbers.length) {
+      return res.status(404).json({ error: 'Phone number not found' });
+    }
+
+    await kv.set('phone_numbers', filtered);
+
+    res.json({
+      success: true,
+      message: 'Phone number removed successfully'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/numbers/:sid (DELETE)' });
     res.status(500).json({ error: error.message });
   }
 });

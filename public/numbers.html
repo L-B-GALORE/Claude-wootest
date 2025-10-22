@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Number Management - Twilio Manager</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .numbers-container {
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .numbers-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .numbers-header h1 {
+            color: #333;
+            margin: 0;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+
+        .wizard-complete-banner {
+            background: #e3f2fd;
+            border: 1px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .wizard-complete-banner h3 {
+            color: #1976d2;
+            margin: 0 0 5px 0;
+        }
+
+        .wizard-complete-banner p {
+            color: #666;
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .add-number-section {
+            margin-bottom: 30px;
+        }
+
+        .add-number-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .add-number-btn:hover {
+            background: #5568d3;
+        }
+
+        .numbers-list {
+            margin-top: 20px;
+        }
+
+        .number-card {
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .number-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .number-info h3 {
+            color: #333;
+            margin: 0 0 5px 0;
+            font-size: 20px;
+        }
+
+        .number-info .friendly-name {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .number-badges {
+            display: flex;
+            gap: 10px;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-configured {
+            background: #c8e6c9;
+            color: #388e3c;
+        }
+
+        .badge-not-configured {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .badge-issues {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .validation-issues {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .validation-issues h4 {
+            color: #856404;
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+
+        .validation-issues ul {
+            margin: 0;
+            padding-left: 20px;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .validation-issues li {
+            margin-bottom: 5px;
+        }
+
+        .number-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-configure {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-configure:hover {
+            background: #5568d3;
+        }
+
+        .btn-fix {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-fix:hover {
+            background: #d97706;
+        }
+
+        .btn-validate {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-validate:hover {
+            background: #059669;
+        }
+
+        .btn-delete {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #dc2626;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message-box {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .message-error {
+            background: #fee;
+            color: #c00;
+            border: 1px solid #fcc;
+        }
+
+        .message-success {
+            background: #efe;
+            color: #060;
+            border: 1px solid #cfc;
+        }
+
+        .message-info {
+            background: #eef;
+            color: #006;
+            border: 1px solid #ccf;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+        }
+
+        .phone-number-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .phone-number-option {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .phone-number-option:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .phone-number-option.selected {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .modal-cancel {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .modal-confirm {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="numbers-container">
+        <div class="numbers-header">
+            <h1>📱 Phone Number Management</h1>
+            <div class="nav-links">
+                <a href="/setup.html">⚙️ Setup</a>
+                <a href="/debug">🐛 Debug</a>
+                <a href="/">📞 Phone</a>
+            </div>
+        </div>
+
+        <div id="wizard-banner"></div>
+        <div id="message-box"></div>
+
+        <div class="add-number-section">
+            <button class="add-number-btn" onclick="showAddNumberModal()">+ Add Phone Number</button>
+            <button class="add-number-btn" style="background: #10b981; margin-left: 10px;" onclick="validateAllNumbers()">🔍 Validate All</button>
+        </div>
+
+        <div id="numbers-list" class="numbers-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading phone numbers...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Number Modal -->
+    <div class="modal" id="add-number-modal">
+        <div class="modal-content">
+            <h2>Add Phone Number from Twilio</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Select a phone number from your Twilio account to import and configure.
+            </p>
+            <div id="modal-message"></div>
+            <div id="available-numbers" class="phone-number-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading available numbers...</p>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-cancel" onclick="hideAddNumberModal()">Cancel</button>
+                <button class="modal-confirm" id="import-btn" onclick="importNumber()" disabled>Import Number</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedNumber = null;
+        let phoneNumbers = [];
+
+        // Check for wizard completion query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const wizardComplete = urlParams.get('wizard');
+
+        if (wizardComplete === 'voice') {
+            document.getElementById('wizard-banner').innerHTML = `
+                <div class="wizard-complete-banner">
+                    <h3>✅ Voice Setup Complete!</h3>
+                    <p>Your TwiML application and API keys have been configured. Now add phone numbers below to start making calls.</p>
+                </div>
+            `;
+        }
+
+        async function loadPhoneNumbers() {
+            const listDiv = document.getElementById('numbers-list');
+
+            try {
+                const response = await fetch('/api/numbers');
+                const data = await response.json();
+
+                if (response.ok) {
+                    phoneNumbers = data.numbers || [];
+
+                    if (phoneNumbers.length === 0) {
+                        listDiv.innerHTML = `
+                            <div class="empty-state">
+                                <h2>No Phone Numbers Yet</h2>
+                                <p>Click "Add Phone Number" above to import numbers from your Twilio account.</p>
+                            </div>
+                        `;
+                    } else {
+                        renderPhoneNumbers();
+                    }
+                } else {
+                    listDiv.innerHTML = `<div class="message-box message-error">Failed to load phone numbers: ${data.error}</div>`;
+                }
+            } catch (error) {
+                listDiv.innerHTML = `<div class="message-box message-error">Error loading phone numbers: ${error.message}</div>`;
+            }
+        }
+
+        function renderPhoneNumbers() {
+            const listDiv = document.getElementById('numbers-list');
+
+            listDiv.innerHTML = phoneNumbers.map(number => {
+                const voiceStatus = getVoiceStatus(number);
+                const smsStatus = getSMSStatus(number);
+                const voiceIssues = getVoiceIssues(number);
+                const smsIssues = getSMSIssues(number);
+
+                let issuesHtml = '';
+                if (voiceIssues.length > 0 || smsIssues.length > 0) {
+                    issuesHtml = `
+                        <div class="validation-issues">
+                            <h4>⚠️ Configuration Issues:</h4>
+                            <ul>
+                                ${voiceIssues.map(issue => `<li>${issue}</li>`).join('')}
+                                ${smsIssues.map(issue => `<li>${issue}</li>`).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="number-card">
+                        <div class="number-card-header">
+                            <div class="number-info">
+                                <h3>${number.phone_number}</h3>
+                                ${number.friendly_name ? `<div class="friendly-name">${number.friendly_name}</div>` : ''}
+                            </div>
+                            <div class="number-badges">
+                                <span class="status-badge ${voiceStatus.class}">Voice: ${voiceStatus.label}</span>
+                                <span class="status-badge ${smsStatus.class}">SMS: ${smsStatus.label}</span>
+                            </div>
+                        </div>
+                        ${issuesHtml}
+                        <div class="number-actions">
+                            ${voiceStatus.status === 'not-configured' ? `<button class="btn-small btn-configure" onclick="configureVoice('${number.sid}')">Configure Voice</button>` : ''}
+                            ${voiceStatus.status === 'issues' ? `<button class="btn-small btn-fix" onclick="fixVoice('${number.sid}')">Fix Voice</button>` : ''}
+                            ${smsStatus.status === 'not-configured' ? `<button class="btn-small btn-configure" onclick="configureSMS('${number.sid}')">Configure SMS</button>` : ''}
+                            ${smsStatus.status === 'issues' ? `<button class="btn-small btn-fix" onclick="fixSMS('${number.sid}')">Fix SMS</button>` : ''}
+                            <button class="btn-small btn-validate" onclick="validateNumber('${number.sid}')">Validate</button>
+                            <button class="btn-small btn-delete" onclick="deleteNumber('${number.sid}', '${number.phone_number}')">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getVoiceStatus(number) {
+            if (!number.voice_config || !number.voice_config.webhook_configured) {
+                return { status: 'not-configured', label: 'Not Configured', class: 'badge-not-configured' };
+            }
+
+            const issues = getVoiceIssues(number);
+            if (issues.length > 0) {
+                return { status: 'issues', label: 'Issues', class: 'badge-issues' };
+            }
+
+            return { status: 'configured', label: 'Configured', class: 'badge-configured' };
+        }
+
+        function getSMSStatus(number) {
+            if (!number.sms_config || !number.sms_config.webhook_configured) {
+                return { status: 'not-configured', label: 'Not Configured', class: 'badge-not-configured' };
+            }
+
+            const issues = getSMSIssues(number);
+            if (issues.length > 0) {
+                return { status: 'issues', label: 'Issues', class: 'badge-issues' };
+            }
+
+            return { status: 'configured', label: 'Configured', class: 'badge-configured' };
+        }
+
+        function getVoiceIssues(number) {
+            const issues = [];
+            // Validation logic will be implemented on backend
+            if (number.voice_config && number.voice_config.issues) {
+                return number.voice_config.issues;
+            }
+            return issues;
+        }
+
+        function getSMSIssues(number) {
+            const issues = [];
+            // Validation logic will be implemented on backend
+            if (number.sms_config && number.sms_config.issues) {
+                return number.sms_config.issues;
+            }
+            return issues;
+        }
+
+        async function showAddNumberModal() {
+            document.getElementById('add-number-modal').classList.add('active');
+            await loadAvailableNumbers();
+        }
+
+        function hideAddNumberModal() {
+            document.getElementById('add-number-modal').classList.remove('active');
+            selectedNumber = null;
+        }
+
+        async function loadAvailableNumbers() {
+            const listDiv = document.getElementById('available-numbers');
+            const modalMessage = document.getElementById('modal-message');
+
+            try {
+                const response = await fetch('/api/twilio/phone-numbers');
+                const data = await response.json();
+
+                if (response.ok && data.numbers && data.numbers.length > 0) {
+                    listDiv.innerHTML = data.numbers.map(number => `
+                        <div class="phone-number-option" onclick="selectNumber('${number.sid}', '${number.phoneNumber}', '${number.friendlyName || ''}')">
+                            <label style="cursor: pointer; display: block;">
+                                <input type="radio" name="phone-number" value="${number.sid}">
+                                <strong>${number.phoneNumber}</strong>
+                                ${number.friendlyName ? `<br><small style="color: #666;">${number.friendlyName}</small>` : ''}
+                                <br><small style="color: #999;">Voice: ${number.capabilities.voice ? '✓' : '✗'} | SMS: ${number.capabilities.SMS ? '✓' : '✗'} | MMS: ${number.capabilities.MMS ? '✓' : '✗'}</small>
+                            </label>
+                        </div>
+                    `).join('');
+                } else {
+                    modalMessage.innerHTML = '<div class="message-box message-error">No phone numbers found in your Twilio account.</div>';
+                    listDiv.innerHTML = '';
+                }
+            } catch (error) {
+                modalMessage.innerHTML = `<div class="message-box message-error">Failed to load numbers: ${error.message}</div>`;
+            }
+        }
+
+        function selectNumber(sid, phoneNumber, friendlyName) {
+            document.querySelectorAll('.phone-number-option').forEach(el => el.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+
+            selectedNumber = { sid, phoneNumber, friendlyName };
+            document.getElementById('import-btn').disabled = false;
+        }
+
+        async function importNumber() {
+            if (!selectedNumber) return;
+
+            const messageDiv = document.getElementById('modal-message');
+            messageDiv.innerHTML = '<div class="message-box message-info">Importing number...</div>';
+
+            try {
+                const response = await fetch('/api/numbers/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(selectedNumber)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageDiv.innerHTML = '<div class="message-box message-success">Number imported successfully!</div>';
+                    setTimeout(() => {
+                        hideAddNumberModal();
+                        loadPhoneNumbers();
+                    }, 1000);
+                } else {
+                    messageDiv.innerHTML = `<div class="message-box message-error">Failed to import: ${data.error}</div>`;
+                }
+            } catch (error) {
+                messageDiv.innerHTML = `<div class="message-box message-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function configureVoice(sid) {
+            await performAction(`/api/numbers/${sid}/configure-voice`, 'Configuring voice...');
+        }
+
+        async function configureSMS(sid) {
+            await performAction(`/api/numbers/${sid}/configure-sms`, 'Configuring SMS...');
+        }
+
+        async function fixVoice(sid) {
+            await performAction(`/api/numbers/${sid}/fix-voice`, 'Fixing voice configuration...');
+        }
+
+        async function fixSMS(sid) {
+            await performAction(`/api/numbers/${sid}/fix-sms`, 'Fixing SMS configuration...');
+        }
+
+        async function validateNumber(sid) {
+            await performAction(`/api/numbers/${sid}/validate`, 'Validating number...');
+        }
+
+        async function validateAllNumbers() {
+            await performAction('/api/numbers/validate-all', 'Validating all numbers...');
+        }
+
+        async function deleteNumber(sid, phoneNumber) {
+            if (!confirm(`Are you sure you want to remove ${phoneNumber} from your configuration?`)) {
+                return;
+            }
+
+            await performAction(`/api/numbers/${sid}`, 'Deleting number...', 'DELETE');
+        }
+
+        async function performAction(url, loadingMessage, method = 'POST') {
+            const messageBox = document.getElementById('message-box');
+            messageBox.innerHTML = `<div class="message-box message-info">${loadingMessage}</div>`;
+
+            try {
+                const response = await fetch(url, { method });
+                const data = await response.json();
+
+                if (response.ok) {
+                    messageBox.innerHTML = `<div class="message-box message-success">${data.message || 'Action completed successfully'}</div>`;
+                    setTimeout(() => {
+                        messageBox.innerHTML = '';
+                    }, 3000);
+                    await loadPhoneNumbers();
+                } else {
+                    messageBox.innerHTML = `<div class="message-box message-error">Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                messageBox.innerHTML = `<div class="message-box message-error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Load phone numbers on page load
+        loadPhoneNumbers();
+    </script>
+</body>
+</html>

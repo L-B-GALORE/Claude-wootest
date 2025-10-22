@@ -243,7 +243,7 @@
     <div class="wizard-container">
         <div class="wizard-header">
             <h1>📞 Voice Setup Wizard</h1>
-            <p>Set up voice calling in 3 easy steps</p>
+            <p>Set up voice calling in 2 easy steps</p>
         </div>
 
         <!-- Progress Bar -->
@@ -254,10 +254,6 @@
             </div>
             <div class="progress-step" id="progress-2">
                 <div class="progress-step-circle">2</div>
-                <div class="progress-step-label">Phone Number</div>
-            </div>
-            <div class="progress-step" id="progress-3">
-                <div class="progress-step-circle">3</div>
                 <div class="progress-step-label">Configure</div>
             </div>
         </div>
@@ -287,26 +283,10 @@
             </div>
         </div>
 
-        <!-- Step 2: Select Phone Number -->
+        <!-- Step 2: Configure -->
         <div class="wizard-step" id="step-2">
-            <h2>Step 2: Select Phone Number</h2>
-            <p style="color: #666; margin-bottom: 20px;">
-                Choose which Twilio phone number to use for voice calling.
-            </p>
-
-            <div id="step2-message"></div>
-            <div id="phone-numbers-list"></div>
-
-            <div class="wizard-buttons">
-                <button class="btn-back" onclick="goToStep(1)">← Back</button>
-                <button class="btn-next" id="step2-next" onclick="goToStep(3)" disabled>Next →</button>
-            </div>
-        </div>
-
-        <!-- Step 3: Configure -->
-        <div class="wizard-step" id="step-3">
-            <h2>Step 3: Configuring Voice</h2>
-            <div id="step3-content">
+            <h2>Step 2: Configuring Voice</h2>
+            <div id="step2-content">
                 <div class="loading">
                     <div class="spinner"></div>
                     <p>Setting up your voice configuration...</p>
@@ -315,7 +295,6 @@
                 <div id="config-status">
                     <p>⏳ Creating TwiML Application...</p>
                     <p>⏳ Generating API Keys...</p>
-                    <p>⏳ Configuring phone number webhook...</p>
                 </div>
             </div>
         </div>
@@ -324,7 +303,6 @@
     <script>
         let currentStep = 1;
         let credentials = {};
-        let selectedPhoneNumber = null;
 
         function goToStep(step) {
             // Hide all steps
@@ -341,8 +319,8 @@
             document.getElementById(`progress-${step}`).classList.add('active');
             currentStep = step;
 
-            // Auto-start configuration on step 3
-            if (step === 3) {
+            // Auto-start configuration on step 2
+            if (step === 2) {
                 configureVoice();
             }
         }
@@ -371,7 +349,6 @@
 
                 if (response.ok) {
                     credentials = { accountSid, authToken };
-                    await loadPhoneNumbers();
                     goToStep(2);
                 } else {
                     messageDiv.innerHTML = `<div class="status-message error">Error: ${data.error}</div>`;
@@ -381,67 +358,6 @@
             }
         }
 
-        async function loadPhoneNumbers() {
-            const messageDiv = document.getElementById('step2-message');
-            const listDiv = document.getElementById('phone-numbers-list');
-
-            messageDiv.innerHTML = '<div class="status-message info">Loading your phone numbers...</div>';
-            listDiv.innerHTML = '';
-
-            try {
-                const response = await fetch('/api/twilio/phone-numbers');
-                const data = await response.json();
-
-                if (response.ok && data.numbers && data.numbers.length > 0) {
-                    messageDiv.innerHTML = '';
-
-                    data.numbers.forEach(number => {
-                        const option = document.createElement('div');
-                        option.className = 'phone-number-option';
-                        option.innerHTML = `
-                            <label style="cursor: pointer; display: block;">
-                                <input type="radio" name="phone-number" value="${number.sid}" data-number="${number.phoneNumber}">
-                                <strong>${number.phoneNumber}</strong>
-                                ${number.friendlyName ? `<br><small style="color: #666;">${number.friendlyName}</small>` : ''}
-                                <br><small style="color: #999;">Voice: ${number.capabilities.voice ? '✓' : '✗'} | SMS: ${number.capabilities.SMS ? '✓' : '✗'} | MMS: ${number.capabilities.MMS ? '✓' : '✗'}</small>
-                            </label>
-                        `;
-
-                        option.onclick = function(e) {
-                            if (e.target.tagName !== 'INPUT') {
-                                const radio = option.querySelector('input[type="radio"]');
-                                radio.checked = true;
-                                selectPhoneNumber(radio);
-                            } else {
-                                selectPhoneNumber(e.target);
-                            }
-                        };
-
-                        listDiv.appendChild(option);
-                    });
-                } else {
-                    messageDiv.innerHTML = '<div class="status-message error">No phone numbers found in your Twilio account.</div>';
-                }
-            } catch (error) {
-                messageDiv.innerHTML = `<div class="status-message error">Failed to load phone numbers: ${error.message}</div>`;
-            }
-        }
-
-        function selectPhoneNumber(radio) {
-            // Remove selected class from all
-            document.querySelectorAll('.phone-number-option').forEach(el => el.classList.remove('selected'));
-
-            // Add selected class to parent
-            radio.closest('.phone-number-option').classList.add('selected');
-
-            selectedPhoneNumber = {
-                sid: radio.value,
-                phoneNumber: radio.dataset.number
-            };
-
-            document.getElementById('step2-next').disabled = false;
-        }
-
         async function configureVoice() {
             const statusDiv = document.getElementById('config-status');
 
@@ -449,7 +365,6 @@
                 statusDiv.innerHTML = `
                     <p>⏳ Creating TwiML Application...</p>
                     <p>⏳ Generating API Keys...</p>
-                    <p>⏳ Configuring phone number webhook...</p>
                 `;
 
                 const response = await fetch('/api/setup/voice/complete', {
@@ -457,9 +372,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         accountSid: credentials.accountSid,
-                        authToken: credentials.authToken,
-                        phoneNumberSid: selectedPhoneNumber.sid,
-                        phoneNumber: selectedPhoneNumber.phoneNumber
+                        authToken: credentials.authToken
                     })
                 });
 
@@ -469,20 +382,19 @@
                     statusDiv.innerHTML = `
                         <div class="success-icon">✅</div>
                         <div class="success-message">
-                            <h2>Voice Configured Successfully!</h2>
-                            <p>Your phone number ${selectedPhoneNumber.phoneNumber} is ready to make and receive calls.</p>
+                            <h2>Voice Account Setup Complete!</h2>
+                            <p>Your TwiML application and API keys have been created. You can now configure phone numbers for voice calling.</p>
                         </div>
                         <p style="color: #10b981;">✓ TwiML Application created</p>
                         <p style="color: #10b981;">✓ API Keys generated</p>
-                        <p style="color: #10b981;">✓ Phone number webhook configured</p>
                     `;
 
-                    // Add button to go to phone
+                    // Add button to go to phone numbers page
                     setTimeout(() => {
                         const btnDiv = document.createElement('div');
                         btnDiv.className = 'wizard-buttons';
-                        btnDiv.innerHTML = '<button class="btn-next" onclick="window.location.href=\'/\'">Start Making Calls</button>';
-                        document.getElementById('step3-content').appendChild(btnDiv);
+                        btnDiv.innerHTML = '<button class="btn-next" onclick="window.location.href=\'/numbers?wizard=voice\'">Configure Phone Numbers</button>';
+                        document.getElementById('step2-content').appendChild(btnDiv);
                     }, 1000);
                 } else {
                     statusDiv.innerHTML = `<div class="status-message error">Configuration failed: ${data.error}</div>`;

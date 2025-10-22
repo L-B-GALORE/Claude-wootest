@@ -202,6 +202,122 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
+// Voice Setup: Save and validate credentials
+app.post('/api/setup/voice/credentials', async (req, res) => {
+  try {
+    const { accountSid, authToken } = req.body;
+
+    if (!accountSid || !authToken) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Validate credentials by making a test API call
+    const client = twilio(accountSid, authToken);
+
+    try {
+      // Try to fetch account info to validate credentials
+      await client.api.accounts(accountSid).fetch();
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid Twilio credentials' });
+    }
+
+    // Save credentials to twilio_account
+    await kv.set('twilio_account', {
+      accountSid,
+      authToken,
+      voice_setup_completed: false,
+      sms_setup_completed: false,
+      created_at: new Date().toISOString()
+    });
+
+    res.json({ success: true, message: 'Credentials validated successfully' });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/setup/voice/credentials' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Voice Setup: Complete configuration
+app.post('/api/setup/voice/complete', async (req, res) => {
+  try {
+    const { accountSid, authToken, phoneNumberSid, phoneNumber } = req.body;
+
+    if (!accountSid || !authToken || !phoneNumberSid || !phoneNumber) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    // Auto-provision TwiML App and API Keys
+    const provisioned = await autoProvision(accountSid, authToken, baseUrl);
+
+    // Configure phone number webhook
+    const client = twilio(accountSid, authToken);
+    await client.incomingPhoneNumbers(phoneNumberSid).update({
+      voiceUrl: `${baseUrl}/voice`,
+      voiceMethod: 'POST'
+    });
+
+    // Save TwiML app data
+    await kv.set('twiml_app', {
+      sid: provisioned.twimlAppSid,
+      api_key: provisioned.apiKey,
+      api_secret: provisioned.apiSecret,
+      app_url: baseUrl,
+      created_at: new Date().toISOString(),
+      last_validated: new Date().toISOString(),
+      is_valid: true
+    });
+
+    // Save phone numbers array
+    const phoneNumbers = [{
+      sid: phoneNumberSid,
+      phone_number: phoneNumber,
+      friendly_name: '',
+      voice_config: {
+        webhook_url: `${baseUrl}/voice`,
+        webhook_configured: true,
+        last_validated: new Date().toISOString(),
+        is_valid: true
+      },
+      sms_config: {
+        webhook_configured: false
+      }
+    }];
+    await kv.set('phone_numbers', phoneNumbers);
+
+    // Update account to mark voice setup as completed
+    const account = await kv.get('twilio_account');
+    await kv.set('twilio_account', {
+      ...account,
+      voice_setup_completed: true
+    });
+
+    // Also save in old format for backward compatibility
+    await saveConfig({
+      accountSid,
+      authToken,
+      phoneNumber,
+      twimlAppSid: provisioned.twimlAppSid,
+      apiKey: provisioned.apiKey,
+      apiSecret: provisioned.apiSecret,
+      initialized: true,
+      baseUrl
+    });
+
+    res.json({
+      success: true,
+      message: 'Voice configuration completed successfully',
+      twimlAppSid: provisioned.twimlAppSid
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/setup/voice/complete' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Generate access token for browser
 app.get('/api/token', async (req, res) => {
   try {

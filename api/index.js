@@ -126,13 +126,79 @@ app.post('/api/setup', async (req, res) => {
   }
 });
 
-// Check if initialized
+// Reset all configuration
+app.post('/api/reset', async (req, res) => {
+  try {
+    // Delete all KV keys
+    await kv.del('twilio_config');
+    await kv.del('twilio_account');
+    await kv.del('twiml_app');
+    await kv.del('phone_numbers');
+    await kv.del('conversations');
+    await kv.del('messages');
+    await kv.del('error_logs');
+
+    res.json({
+      success: true,
+      message: 'All configuration has been reset'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/reset' });
+    res.status(500).json({ error: 'Failed to reset configuration' });
+  }
+});
+
+// Query available Twilio phone numbers
+app.get('/api/twilio/phone-numbers', async (req, res) => {
+  try {
+    const account = await kv.get('twilio_account');
+
+    if (!account || !account.accountSid || !account.authToken) {
+      return res.status(400).json({ error: 'Twilio credentials not configured' });
+    }
+
+    const client = twilio(account.accountSid, account.authToken);
+
+    // Fetch incoming phone numbers
+    const numbers = await client.incomingPhoneNumbers.list({ limit: 100 });
+
+    const formattedNumbers = numbers.map(number => ({
+      sid: number.sid,
+      phoneNumber: number.phoneNumber,
+      friendlyName: number.friendlyName,
+      capabilities: {
+        voice: number.capabilities.voice,
+        SMS: number.capabilities.SMS,
+        MMS: number.capabilities.MMS
+      }
+    }));
+
+    res.json({ numbers: formattedNumbers });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/twilio/phone-numbers' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Check if initialized and setup status
 app.get('/api/status', async (req, res) => {
   try {
     const config = await getConfig();
-    res.json({ initialized: !!config?.initialized });
+    const account = await kv.get('twilio_account');
+
+    res.json({
+      initialized: !!config?.initialized,
+      account_configured: !!account?.accountSid,
+      voice_setup_completed: !!account?.voice_setup_completed,
+      sms_setup_completed: !!account?.sms_setup_completed
+    });
   } catch (error) {
-    res.json({ initialized: false });
+    res.json({
+      initialized: false,
+      account_configured: false,
+      voice_setup_completed: false,
+      sms_setup_completed: false
+    });
   }
 });
 

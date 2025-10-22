@@ -6,10 +6,7 @@ let callTimer;
 let callStartTime;
 
 // DOM elements
-const setupScreen = document.getElementById('setup-screen');
 const phoneScreen = document.getElementById('phone-screen');
-const setupForm = document.getElementById('setup-form');
-const setupStatus = document.getElementById('setup-status');
 const statusDiv = document.getElementById('status');
 
 const idleState = document.getElementById('idle-state');
@@ -80,65 +77,15 @@ async function init() {
             return;
         }
 
-        if (data.initialized) {
-            // Already initialized, show phone screen
-            setupScreen.classList.add('hidden');
-            phoneScreen.classList.remove('hidden');
-            await initializePhone();
-        } else {
-            // Show setup screen
-            setupScreen.classList.remove('hidden');
-            phoneScreen.classList.add('hidden');
-        }
+        // Show phone screen and initialize
+        phoneScreen.classList.remove('hidden');
+        await initializePhone();
     } catch (error) {
         console.error('Initialization error:', error);
         logError(error, { function: 'init' });
         showStatus('Error checking initialization status', true);
     }
 }
-
-// Setup form handler
-setupForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const accountSid = document.getElementById('accountSid').value.trim();
-    const authToken = document.getElementById('authToken').value.trim();
-    const phoneNumber = document.getElementById('phoneNumber').value.trim();
-
-    setupStatus.textContent = 'Initializing... This may take a moment.';
-    setupStatus.className = '';
-
-    try {
-        const response = await fetch('/api/setup', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ accountSid, authToken, phoneNumber })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-            setupStatus.textContent = 'Setup completed successfully! Loading phone...';
-            setupStatus.className = 'success';
-
-            // Wait a moment then switch to phone screen
-            setTimeout(async () => {
-                setupScreen.classList.add('hidden');
-                phoneScreen.classList.remove('hidden');
-                await initializePhone();
-            }, 1500);
-        } else {
-            setupStatus.textContent = `Error: ${data.error}`;
-            setupStatus.className = 'error';
-        }
-    } catch (error) {
-        logError(error, { function: 'setupForm', accountSid });
-        setupStatus.textContent = `Error: ${error.message}`;
-        setupStatus.className = 'error';
-    }
-});
 
 // Initialize Twilio Device with SDK 2.x
 async function initializePhone() {

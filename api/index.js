@@ -289,6 +289,32 @@ app.post('/api/setup/voice/complete', async (req, res) => {
   }
 });
 
+// SMS Setup: Complete configuration
+app.post('/api/setup/sms/complete', async (req, res) => {
+  try {
+    const { accountSid, authToken } = req.body;
+
+    if (!accountSid || !authToken) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Update account to mark SMS setup as completed
+    const account = await kv.get('twilio_account');
+    await kv.set('twilio_account', {
+      ...account,
+      sms_setup_completed: true
+    });
+
+    res.json({
+      success: true,
+      message: 'SMS setup completed successfully'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/setup/sms/complete' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Phone Number Management Endpoints
 
 // Get all phone numbers
@@ -610,6 +636,233 @@ app.delete('/api/numbers/:sid', async (req, res) => {
   }
 });
 
+// SMS/Messaging API Endpoints
+
+// Get all conversations
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const conversations = await kv.get('conversations') || [];
+    res.json({ conversations });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/conversations' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get messages for a conversation
+app.get('/api/conversations/:phoneNumber/messages', async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    const messages = await kv.get('messages') || [];
+
+    // Filter messages for this conversation
+    const conversationMessages = messages.filter(m =>
+      m.from === phoneNumber || m.to === phoneNumber
+    );
+
+    res.json({ messages: conversationMessages });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/conversations/:phoneNumber/messages' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Send SMS/MMS
+app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    const { body, mediaUrl } = req.body;
+
+    const account = await kv.get('twilio_account');
+    const numbers = await kv.get('phone_numbers') || [];
+
+    if (!account) {
+      return res.status(400).json({ error: 'Account not configured' });
+    }
+
+    // Find first SMS-enabled number as sender
+    const smsNumber = numbers.find(n => n.sms_config && n.sms_config.webhook_configured);
+
+    if (!smsNumber) {
+      return res.status(400).json({ error: 'No SMS-enabled phone number configured' });
+    }
+
+    // Send message via Twilio
+    const client = twilio(account.accountSid, account.authToken);
+    const messageParams = {
+      body: body || '',
+      from: smsNumber.phone_number,
+      to: phoneNumber,
+      statusCallback: `${req.protocol}://${req.get('host')}/sms-status`
+    };
+
+    if (mediaUrl) {
+      messageParams.mediaUrl = [mediaUrl];
+    }
+
+    const message = await client.messages.create(messageParams);
+
+    // Store in database
+    const messages = await kv.get('messages') || [];
+    const newMessage = {
+      sid: message.sid,
+      from: smsNumber.phone_number,
+      to: phoneNumber,
+      body: body || '',
+      media: mediaUrl ? [{ url: mediaUrl }] : [],
+      direction: 'outbound',
+      timestamp: new Date().toISOString(),
+      status: message.status
+    };
+
+    messages.unshift(newMessage);
+    await kv.set('messages', messages.slice(0, 1000));
+
+    // Update conversation
+    const conversations = await kv.get('conversations') || [];
+    const existingConv = conversations.find(c => c.phone_number === phoneNumber);
+
+    if (existingConv) {
+      existingConv.last_message = body || '(Media message)';
+      existingConv.last_message_time = new Date().toISOString();
+      existingConv.unread_count = 0; // Reset unread count since we're viewing
+    } else {
+      conversations.unshift({
+        phone_number: phoneNumber,
+        last_message: body || '(Media message)',
+        last_message_time: new Date().toISOString(),
+        unread_count: 0
+      });
+    }
+
+    await kv.set('conversations', conversations);
+
+    res.json({
+      success: true,
+      message: newMessage
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/conversations/:phoneNumber/send' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mark conversation as read
+app.post('/api/conversations/:phoneNumber/mark-read', async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    const conversations = await kv.get('conversations') || [];
+
+    const conversation = conversations.find(c => c.phone_number === phoneNumber);
+    if (conversation) {
+      conversation.unread_count = 0;
+      await kv.set('conversations', conversations);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/conversations/:phoneNumber/mark-read' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete conversation
+app.delete('/api/conversations/:phoneNumber', async (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+
+    // Delete conversation
+    const conversations = await kv.get('conversations') || [];
+    const filtered = conversations.filter(c => c.phone_number !== phoneNumber);
+    await kv.set('conversations', filtered);
+
+    // Delete messages
+    const messages = await kv.get('messages') || [];
+    const filteredMessages = messages.filter(m =>
+      m.from !== phoneNumber && m.to !== phoneNumber
+    );
+    await kv.set('messages', filteredMessages);
+
+    res.json({ success: true });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/conversations/:phoneNumber (DELETE)' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate TwiML app configuration
+app.post('/api/twiml-app/validate', async (req, res) => {
+  try {
+    const account = await kv.get('twilio_account');
+    const twimlApp = await kv.get('twiml_app');
+
+    if (!account || !twimlApp) {
+      return res.status(400).json({ error: 'TwiML app not configured' });
+    }
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    const issues = [];
+
+    try {
+      // Fetch actual TwiML app from Twilio
+      const client = twilio(account.accountSid, account.authToken);
+      const twilioApp = await client.applications(twimlApp.sid).fetch();
+
+      // Validate URLs and methods
+      if (twilioApp.voiceUrl !== `${baseUrl}/voice`) {
+        issues.push('Voice URL mismatch');
+      }
+      if (twilioApp.voiceMethod !== 'POST') {
+        issues.push('Voice method should be POST');
+      }
+      if (twilioApp.statusCallback !== `${baseUrl}/status`) {
+        issues.push('Status callback URL mismatch');
+      }
+      if (twilioApp.statusCallbackMethod !== 'POST') {
+        issues.push('Status callback method should be POST');
+      }
+
+      // Update database with validation results
+      await kv.set('twiml_app', {
+        ...twimlApp,
+        is_valid: issues.length === 0,
+        last_validated: new Date().toISOString(),
+        issues
+      });
+
+      res.json({
+        success: true,
+        is_valid: issues.length === 0,
+        issues,
+        message: issues.length === 0
+          ? 'TwiML app configuration is valid'
+          : `Found ${issues.length} issue(s)`
+      });
+    } catch (error) {
+      // TwiML app doesn't exist or can't be fetched
+      await kv.set('twiml_app', {
+        ...twimlApp,
+        is_valid: false,
+        last_validated: new Date().toISOString(),
+        issues: ['TwiML app not found in Twilio account']
+      });
+
+      res.json({
+        success: true,
+        is_valid: false,
+        issues: ['TwiML app not found in Twilio account'],
+        message: 'TwiML app not found - may need to run voice wizard again'
+      });
+    }
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/twiml-app/validate' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Generate access token for browser
 app.get('/api/token', async (req, res) => {
   try {
@@ -690,6 +943,92 @@ app.post('/voice', async (req, res) => {
 app.post('/status', (req, res) => {
   console.log('Call status:', req.body);
   res.sendStatus(200);
+});
+
+// SMS webhook - handles incoming SMS/MMS
+app.post('/sms', async (req, res) => {
+  try {
+    const { From, To, Body, NumMedia, MessageSid } = req.body;
+
+    // Get media URLs if MMS
+    const mediaUrls = [];
+    if (NumMedia && parseInt(NumMedia) > 0) {
+      for (let i = 0; i < parseInt(NumMedia); i++) {
+        mediaUrls.push({
+          contentType: req.body[`MediaContentType${i}`],
+          url: req.body[`MediaUrl${i}`]
+        });
+      }
+    }
+
+    // Store message in database
+    const messages = await kv.get('messages') || [];
+    const newMessage = {
+      sid: MessageSid,
+      from: From,
+      to: To,
+      body: Body || '',
+      media: mediaUrls,
+      direction: 'inbound',
+      timestamp: new Date().toISOString(),
+      status: 'received'
+    };
+
+    messages.unshift(newMessage);
+    await kv.set('messages', messages.slice(0, 1000)); // Keep last 1000 messages
+
+    // Update conversation
+    const conversations = await kv.get('conversations') || [];
+    const existingConv = conversations.find(c => c.phone_number === From);
+
+    if (existingConv) {
+      existingConv.last_message = Body || '(Media message)';
+      existingConv.last_message_time = new Date().toISOString();
+      existingConv.unread_count = (existingConv.unread_count || 0) + 1;
+    } else {
+      conversations.unshift({
+        phone_number: From,
+        last_message: Body || '(Media message)',
+        last_message_time: new Date().toISOString(),
+        unread_count: 1
+      });
+    }
+
+    await kv.set('conversations', conversations);
+
+    // Respond with empty TwiML (no auto-reply)
+    const MessagingResponse = twilio.twiml.MessagingResponse;
+    const response = new MessagingResponse();
+    res.type('text/xml');
+    res.send(response.toString());
+  } catch (error) {
+    await logError('twilio', error, { endpoint: '/sms', body: req.body });
+    const MessagingResponse = twilio.twiml.MessagingResponse;
+    const response = new MessagingResponse();
+    res.type('text/xml');
+    res.send(response.toString());
+  }
+});
+
+// SMS status callback
+app.post('/sms-status', async (req, res) => {
+  try {
+    const { MessageSid, MessageStatus } = req.body;
+
+    // Update message status in database
+    const messages = await kv.get('messages') || [];
+    const message = messages.find(m => m.sid === MessageSid);
+
+    if (message) {
+      message.status = MessageStatus;
+      await kv.set('messages', messages);
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    await logError('twilio', error, { endpoint: '/sms-status', body: req.body });
+    res.sendStatus(200);
+  }
 });
 
 // Frontend error logging endpoint

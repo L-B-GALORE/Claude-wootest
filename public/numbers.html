@@ -356,6 +356,7 @@
         <div class="numbers-header">
             <h1>📱 Phone Number Management</h1>
             <div class="nav-links">
+                <a href="/messages.html">💬 Messages</a>
                 <a href="/setup.html">⚙️ Setup</a>
                 <a href="/debug">🐛 Debug</a>
                 <a href="/">📞 Phone</a>
@@ -368,6 +369,7 @@
         <div class="add-number-section">
             <button class="add-number-btn" onclick="showAddNumberModal()">+ Add Phone Number</button>
             <button class="add-number-btn" style="background: #10b981; margin-left: 10px;" onclick="validateAllNumbers()">🔍 Validate All</button>
+            <button class="add-number-btn" style="background: #6b7280; margin-left: 10px;" onclick="refreshFromTwilio()">🔄 Refresh</button>
         </div>
 
         <div id="numbers-list" class="numbers-list">
@@ -412,6 +414,13 @@
                 <div class="wizard-complete-banner">
                     <h3>✅ Voice Setup Complete!</h3>
                     <p>Your TwiML application and API keys have been configured. Now add phone numbers below to start making calls.</p>
+                </div>
+            `;
+        } else if (wizardComplete === 'sms') {
+            document.getElementById('wizard-banner').innerHTML = `
+                <div class="wizard-complete-banner">
+                    <h3>✅ SMS Setup Complete!</h3>
+                    <p>Your account is now configured for SMS messaging. Add phone numbers below and configure them for SMS to start sending and receiving messages.</p>
                 </div>
             `;
         }
@@ -665,8 +674,34 @@
             }
         }
 
+        async function refreshFromTwilio() {
+            const messageBox = document.getElementById('message-box');
+            messageBox.innerHTML = '<div class="message-box message-info">Refreshing from Twilio...</div>';
+
+            await validateAllNumbers();
+
+            setTimeout(() => {
+                messageBox.innerHTML = '';
+            }, 2000);
+        }
+
+        // Auto-validate numbers on first load
+        let hasAutoValidated = false;
+
+        async function autoValidateNumbers() {
+            if (hasAutoValidated || phoneNumbers.length === 0) return;
+            hasAutoValidated = true;
+
+            // Wait a moment then auto-validate
+            setTimeout(async () => {
+                await validateAllNumbers();
+            }, 1000);
+        }
+
         // Load phone numbers on page load
-        loadPhoneNumbers();
+        loadPhoneNumbers().then(() => {
+            autoValidateNumbers();
+        });
     </script>
 </body>
 </html>

@@ -613,13 +613,15 @@ app.delete('/api/numbers/:sid', async (req, res) => {
 // Generate access token for browser
 app.get('/api/token', async (req, res) => {
   try {
-    const config = await getConfig();
+    const account = await kv.get('twilio_account');
+    const twimlApp = await kv.get('twiml_app');
 
-    if (!config || !config.initialized) {
+    if (!account || !twimlApp) {
       return res.status(400).json({ error: 'Not initialized. Please run setup first.' });
     }
 
-    const { accountSid, apiKey, apiSecret, twimlAppSid } = config;
+    const { accountSid } = account;
+    const { sid: twimlAppSid, api_key: apiKey, api_secret: apiSecret } = twimlApp;
 
     // Create access token
     const AccessToken = twilio.jwt.AccessToken;
@@ -651,15 +653,19 @@ app.get('/api/token', async (req, res) => {
 // Voice webhook - handles incoming calls
 app.post('/voice', async (req, res) => {
   try {
-    const config = await getConfig();
+    const numbers = await kv.get('phone_numbers') || [];
     const VoiceResponse = twilio.twiml.VoiceResponse;
     const response = new VoiceResponse();
 
+    // Get first configured voice number for caller ID
+    const voiceNumber = numbers.find(n => n.voice_config && n.voice_config.webhook_configured);
+    const callerId = voiceNumber ? voiceNumber.phone_number : null;
+
     // Check if this is an outgoing call from browser
-    if (req.body.To && req.body.To !== config.phoneNumber) {
+    if (req.body.To) {
       // Outgoing call from browser to external number
       const dial = response.dial({
-        callerId: config.phoneNumber
+        callerId: callerId || req.body.To
       });
       dial.number(req.body.To);
     } else {

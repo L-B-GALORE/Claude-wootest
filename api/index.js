@@ -294,12 +294,33 @@ app.post('/api/setup/sms/complete', async (req, res) => {
   try {
     const { accountSid, authToken } = req.body;
 
-    if (!accountSid || !authToken) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Check if account already exists (from voice setup)
+    let account = await kv.get('twilio_account');
+
+    // If no account exists, credentials are required
+    if (!account) {
+      if (!accountSid || !authToken) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Validate credentials by making a test API call
+      const client = twilio(accountSid, authToken);
+      try {
+        await client.api.accounts(accountSid).fetch();
+      } catch (error) {
+        return res.status(401).json({ error: 'Invalid Twilio credentials' });
+      }
+
+      // Create new account entry
+      account = {
+        accountSid,
+        authToken,
+        voice_setup_completed: false,
+        created_at: new Date().toISOString()
+      };
     }
 
-    // Update account to mark SMS setup as completed
-    const account = await kv.get('twilio_account');
+    // Mark SMS as completed
     await kv.set('twilio_account', {
       ...account,
       sms_setup_completed: true

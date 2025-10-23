@@ -222,6 +222,17 @@
             <p>Choose what you'd like to set up. You can always configure more features later.</p>
         </div>
 
+        <!-- Error banner for decryption issues -->
+        <div id="error-banner" style="display: none; background: #fee; border: 2px solid #fcc; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+            <h3 style="color: #c00; margin: 0 0 10px 0;">⚠️ Configuration Error Detected</h3>
+            <p style="color: #666; margin: 0 0 10px 0; font-size: 14px;">
+                Your stored configuration cannot be decrypted. This usually happens when the <code>ENCRYPTION_KEY</code> environment variable has changed.
+            </p>
+            <p style="color: #666; margin: 0; font-size: 14px;">
+                <strong>Solution:</strong> Click "Reset Configuration" below to clear the corrupted data and start fresh.
+            </p>
+        </div>
+
         <div class="setup-options">
             <!-- Voice Setup Card -->
             <div class="setup-card" id="voice-card" onclick="startVoiceSetup()">
@@ -306,6 +317,23 @@
                 }
             } catch (error) {
                 console.error('Failed to load status:', error);
+                // Show error banner if there's a problem
+                document.getElementById('error-banner').style.display = 'block';
+            }
+        }
+
+        // Check for decryption errors by trying to load config
+        async function checkForErrors() {
+            try {
+                const response = await fetch('/api/config-info');
+                const data = await response.json();
+
+                // If we get an error about decryption, show the banner
+                if (!response.ok && data.error && data.error.includes('decrypt')) {
+                    document.getElementById('error-banner').style.display = 'block';
+                }
+            } catch (error) {
+                // Ignore - may just be not configured yet
             }
         }
 
@@ -327,14 +355,21 @@
 
         async function confirmReset() {
             try {
-                const response = await fetch('/api/reset', {
-                    method: 'POST'
+                // Use emergency reset endpoint that doesn't require API key
+                const response = await fetch('/api/emergency-reset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        confirmationCode: 'RESET-EVERYTHING'
+                    })
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    alert('Configuration reset successfully!');
+                    alert('Configuration reset successfully! You can now start fresh.');
                     hideResetModal();
                     location.reload();
                 } else {
@@ -345,8 +380,9 @@
             }
         }
 
-        // Load status when page loads
+        // Load status and check for errors when page loads
         loadStatus();
+        checkForErrors();
     </script>
 </body>
 </html>

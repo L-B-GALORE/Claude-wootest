@@ -243,10 +243,36 @@ app.post('/api/setup/voice/credentials', async (req, res) => {
 // Voice Setup: Complete configuration
 app.post('/api/setup/voice/complete', async (req, res) => {
   try {
-    const { accountSid, authToken } = req.body;
+    let { accountSid, authToken } = req.body;
 
-    if (!accountSid || !authToken) {
-      return res.status(400).json({ error: 'Missing required fields' });
+    // Check if account already exists (from SMS setup)
+    let account = await kv.get('twilio_account');
+
+    // If account exists, use those credentials
+    if (account && account.accountSid && account.authToken) {
+      accountSid = account.accountSid;
+      authToken = account.authToken;
+    } else {
+      // No existing account, credentials are required
+      if (!accountSid || !authToken) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Validate credentials by making a test API call
+      const client = twilio(accountSid, authToken);
+      try {
+        await client.api.accounts(accountSid).fetch();
+      } catch (error) {
+        return res.status(401).json({ error: 'Invalid Twilio credentials' });
+      }
+
+      // Create new account entry if doesn't exist
+      account = {
+        accountSid,
+        authToken,
+        sms_setup_completed: false,
+        created_at: new Date().toISOString()
+      };
     }
 
     const protocol = req.headers['x-forwarded-proto'] || 'https';
@@ -272,7 +298,6 @@ app.post('/api/setup/voice/complete', async (req, res) => {
     });
 
     // Update account to mark voice setup as completed
-    const account = await kv.get('twilio_account');
     await kv.set('twilio_account', {
       ...account,
       voice_setup_completed: true

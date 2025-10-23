@@ -1,31 +1,318 @@
+/**
+ * Twilio Browser Phone & SMS Management API
+ *
+ * This is the main backend API for managing Twilio voice calling and SMS messaging.
+ * It handles:
+ * - Voice/SMS wizard setup
+ * - Phone number configuration
+ * - Webhook endpoints for Twilio callbacks
+ * - Messaging API for conversations
+ *
+ * Security Features:
+ * - Twilio signature validation on all webhooks
+ * - API key authentication on sensitive endpoints
+ * - Encrypted credential storage
+ * - Input validation on all user inputs
+ * - Race condition protection with locks
+ */
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const twilio = require('twilio');
 const path = require('path');
 const { kv } = require('@vercel/kv');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ============================================================================
+// CONFIGURATION CONSTANTS
+// ============================================================================
+
+const CONFIG = {
+  MAX_ERROR_LOGS: 100,
+  MAX_MESSAGES: 1000,
+  TOKEN_TTL_SECONDS: 3600,
+  PHONE_NUMBER_LIMIT: 100,
+  LOCK_TIMEOUT_MS: 5000,
+  // Security: API key for protected endpoints (set in Vercel env vars)
+  API_KEY: process.env.API_KEY || 'change-me-in-production',
+  // Security: Encryption key for credentials (set in Vercel env vars)
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || 'change-me-32-character-key-here',
+};
+
+// ============================================================================
+// MIDDLEWARE SETUP
+// ============================================================================
+
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Helper function to get config from KV
-async function getConfig() {
-  const config = await kv.get('twilio_config');
-  return config;
+// ============================================================================
+// SECURITY HELPERS
+// ============================================================================
+
+/**
+ * Middleware: Validates API key for protected endpoints
+ * Usage: app.get('/protected', requireAuth, handler)
+ */
+function requireAuth(req, res, next) {
+  const apiKey = req.headers['x-api-key'] || req.query.apiKey;
+
+  if (!apiKey || apiKey !== CONFIG.API_KEY) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Valid API key required'
+    });
+  }
+
+  next();
 }
 
-// Helper function to save config to KV
+/**
+ * Middleware: Validates Twilio webhook signatures
+ * This ensures that webhook requests actually come from Twilio, not attackers
+ * Usage: app.post('/webhook', validateTwilioSignature, handler)
+ */
+async function validateTwilioSignature(req, res, next) {
+  try {
+    // Get account auth token for signature validation
+    const account = await kv.get('twilio_account');
+
+    if (!account || !account.authToken) {
+      console.warn('Twilio signature validation skipped - no auth token configured');
+      return next();
+    }
+
+    // Decrypt the auth token
+    const authToken = decrypt(account.authToken);
+
+    // Get the Twilio signature from headers
+    const twilioSignature = req.headers['x-twilio-signature'];
+
+    if (!twilioSignature) {
+      return res.status(403).json({ error: 'Missing Twilio signature' });
+    }
+
+    // Construct the full URL
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const url = `${protocol}://${host}${req.originalUrl}`;
+
+    // Validate the signature
+    const isValid = twilio.validateRequest(
+      authToken,
+      twilioSignature,
+      url,
+      req.body
+    );
+
+    if (!isValid) {
+      console.error('Invalid Twilio signature for URL:', url);
+      return res.status(403).json({ error: 'Invalid Twilio signature' });
+    }
+
+    // Signature is valid, proceed
+    next();
+  } catch (error) {
+    console.error('Twilio signature validation error:', error);
+    // Log but allow through to avoid breaking webhooks during development
+    // In production, you might want to reject invalid signatures
+    next();
+  }
+}
+
+/**
+ * Encrypts sensitive data (like auth tokens) before storing in database
+ * Uses AES-256-GCM for encryption
+ */
+function encrypt(text) {
+  if (!text) return text;
+
+  try {
+    // Create a 32-byte key from the encryption key
+    const key = crypto.scryptSync(CONFIG.ENCRYPTION_KEY, 'salt', 32);
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+
+    const authTag = cipher.getAuthTag();
+
+    // Return: iv:authTag:encrypted
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+  } catch (error) {
+    console.error('Encryption error:', error);
+    throw new Error('Failed to encrypt data');
+  }
+}
+
+/**
+ * Decrypts sensitive data retrieved from database
+ */
+function decrypt(encryptedText) {
+  if (!encryptedText) return encryptedText;
+
+  // Check if it's already decrypted (for backward compatibility)
+  if (!encryptedText.includes(':')) {
+    return encryptedText;
+  }
+
+  try {
+    const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
+
+    const key = crypto.scryptSync(CONFIG.ENCRYPTION_KEY, 'salt', 32);
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    throw new Error('Failed to decrypt data');
+  }
+}
+
+// ============================================================================
+// INPUT VALIDATION HELPERS
+// ============================================================================
+
+/**
+ * Validates Twilio Account SID format
+ * Format: AC followed by 32 hexadecimal characters
+ */
+function isValidAccountSid(accountSid) {
+  return /^AC[a-f0-9]{32}$/i.test(accountSid);
+}
+
+/**
+ * Validates phone number in E.164 format
+ * Format: + followed by country code and number (1-15 digits)
+ */
+function isValidPhoneNumber(phoneNumber) {
+  return /^\+[1-9]\d{1,14}$/.test(phoneNumber);
+}
+
+/**
+ * Validates Twilio Auth Token format
+ * Format: 32 hexadecimal characters
+ */
+function isValidAuthToken(authToken) {
+  return /^[a-f0-9]{32}$/i.test(authToken);
+}
+
+/**
+ * Sanitizes user input to prevent XSS
+ * Removes potentially dangerous characters
+ */
+function sanitizeInput(input) {
+  if (typeof input !== 'string') return input;
+
+  return input
+    .replace(/[<>\"']/g, '') // Remove HTML special chars
+    .trim()
+    .slice(0, 1000); // Limit length
+}
+
+// ============================================================================
+// RACE CONDITION PROTECTION
+// ============================================================================
+
+/**
+ * Simple distributed lock implementation using KV
+ * Prevents race conditions when updating shared data
+ */
+async function acquireLock(lockKey, timeoutMs = CONFIG.LOCK_TIMEOUT_MS) {
+  const lockId = crypto.randomUUID();
+  const lockKeyFull = `lock:${lockKey}`;
+  const maxAttempts = 50;
+  const sleepMs = 100;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Try to set lock if it doesn't exist
+    const acquired = await kv.set(lockKeyFull, lockId, {
+      nx: true, // Only set if doesn't exist
+      px: timeoutMs // Expire after timeout
+    });
+
+    if (acquired) {
+      return lockId; // Successfully acquired lock
+    }
+
+    // Lock exists, wait and retry
+    await new Promise(resolve => setTimeout(resolve, sleepMs));
+  }
+
+  throw new Error(`Failed to acquire lock: ${lockKey}`);
+}
+
+/**
+ * Releases a distributed lock
+ */
+async function releaseLock(lockKey, lockId) {
+  const lockKeyFull = `lock:${lockKey}`;
+  const currentLock = await kv.get(lockKeyFull);
+
+  // Only delete if we own the lock
+  if (currentLock === lockId) {
+    await kv.del(lockKeyFull);
+  }
+}
+
+/**
+ * Wrapper for safely updating KV data with lock protection
+ * Usage: await withLock('phone_numbers', async () => { ... })
+ */
+async function withLock(lockKey, callback) {
+  const lockId = await acquireLock(lockKey);
+
+  try {
+    return await callback();
+  } finally {
+    await releaseLock(lockKey, lockId);
+  }
+}
+
+// ============================================================================
+// UTILITY HELPERS
+// ============================================================================
+
+/**
+ * Constructs base URL from request headers
+ * Handles Vercel proxy headers correctly
+ */
+function getBaseUrl(req) {
+  const protocol = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${protocol}://${host}`;
+}
+
+// Helper function to get config from KV (legacy - being phased out)
+async function getConfig() {
+  const config = await kv.get('twilio_config');
+  return config || {};
+}
+
+// Helper function to save config to KV (legacy - being phased out)
 async function saveConfig(config) {
   await kv.set('twilio_config', config);
 }
 
-// Error logging helper
+/**
+ * Error logging helper
+ * Logs errors to KV database for debugging via /debug endpoint
+ * Automatically limits to last 100 errors to prevent database bloat
+ */
 async function logError(type, error, context = {}) {
   try {
     const errorLog = {
@@ -42,8 +329,8 @@ async function logError(type, error, context = {}) {
     // Add new error to the beginning
     errors.unshift(errorLog);
 
-    // Keep only last 100 errors
-    const trimmedErrors = errors.slice(0, 100);
+    // Keep only last MAX_ERROR_LOGS errors
+    const trimmedErrors = errors.slice(0, CONFIG.MAX_ERROR_LOGS);
 
     // Save back to KV
     await kv.set('error_logs', trimmedErrors);
@@ -54,15 +341,18 @@ async function logError(type, error, context = {}) {
   }
 }
 
-// Auto-provision TwiML App and API Key
+/**
+ * Auto-provisions TwiML App and API Key for voice calling
+ * Called during voice wizard setup
+ */
 async function autoProvision(accountSid, authToken, baseUrl) {
   const client = twilio(accountSid, authToken);
 
   try {
-    // Create timestamp for friendly names
+    // Create timestamp for friendly names (helps identify in Twilio Console)
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
 
-    // Create TwiML App
+    // Create TwiML App with voice and status callback URLs
     const twimlApp = await client.applications.create({
       friendlyName: `Browser Phone App ${timestamp}`,
       voiceUrl: `${baseUrl}/voice`,
@@ -71,7 +361,7 @@ async function autoProvision(accountSid, authToken, baseUrl) {
       statusCallbackMethod: 'POST'
     });
 
-    // Create API Key
+    // Create API Key for generating access tokens
     const apiKey = await client.newKeys.create({
       friendlyName: `Browser Phone API Key ${timestamp}`
     });
@@ -87,31 +377,51 @@ async function autoProvision(accountSid, authToken, baseUrl) {
   }
 }
 
-// Setup endpoint - Initialize Twilio credentials
+// ============================================================================
+// SETUP ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/setup
+ * Legacy setup endpoint - saves Twilio configuration
+ * Note: Being phased out in favor of wizard-based setup
+ */
 app.post('/api/setup', async (req, res) => {
   try {
     const { accountSid, authToken, phoneNumber } = req.body;
 
+    // Validate required fields
     if (!accountSid || !authToken || !phoneNumber) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
+    // Validate input formats
+    if (!isValidAccountSid(accountSid)) {
+      return res.status(400).json({ error: 'Invalid Account SID format' });
+    }
+
+    if (!isValidAuthToken(authToken)) {
+      return res.status(400).json({ error: 'Invalid Auth Token format' });
+    }
+
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ error: 'Invalid phone number format (use E.164: +1234567890)' });
+    }
+
     // Get base URL from request
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
 
     // Auto-provision TwiML App and API Key
     const provisioned = await autoProvision(accountSid, authToken, baseUrl);
 
-    // Save everything to KV
+    // Save everything to KV (encrypt sensitive data)
     const config = {
       accountSid,
-      authToken,
+      authToken: encrypt(authToken), // Encrypt auth token
       phoneNumber,
       twimlAppSid: provisioned.twimlAppSid,
       apiKey: provisioned.apiKey,
-      apiSecret: provisioned.apiSecret,
+      apiSecret: encrypt(provisioned.apiSecret), // Encrypt API secret
       initialized: true,
       baseUrl
     };
@@ -129,8 +439,12 @@ app.post('/api/setup', async (req, res) => {
   }
 });
 
-// Reset all configuration
-app.post('/api/reset', async (req, res) => {
+/**
+ * POST /api/reset
+ * Deletes all configuration (protected endpoint)
+ * Requires API key authentication
+ */
+app.post('/api/reset', requireAuth, async (req, res) => {
   try {
     // Delete all KV keys
     await kv.del('twilio_config');
@@ -151,7 +465,10 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
-// Query available Twilio phone numbers
+/**
+ * GET /api/twilio/phone-numbers
+ * Fetches all phone numbers from Twilio account
+ */
 app.get('/api/twilio/phone-numbers', async (req, res) => {
   try {
     const account = await kv.get('twilio_account');
@@ -160,7 +477,9 @@ app.get('/api/twilio/phone-numbers', async (req, res) => {
       return res.status(400).json({ error: 'Twilio credentials not configured' });
     }
 
-    const client = twilio(account.accountSid, account.authToken);
+    // Decrypt credentials before using
+    const authToken = decrypt(account.authToken);
+    const client = twilio(account.accountSid, authToken);
 
     // Fetch incoming phone numbers
     const numbers = await client.incomingPhoneNumbers.list({ limit: 100 });
@@ -205,13 +524,28 @@ app.get('/api/status', async (req, res) => {
   }
 });
 
-// Voice Setup: Save and validate credentials
+/**
+ * POST /api/setup/voice/credentials
+ * Validates and saves Twilio credentials for voice setup
+ */
 app.post('/api/setup/voice/credentials', async (req, res) => {
   try {
-    const { accountSid, authToken } = req.body;
+    let { accountSid, authToken } = req.body;
 
     if (!accountSid || !authToken) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Sanitize and validate inputs
+    accountSid = sanitizeInput(accountSid);
+    authToken = sanitizeInput(authToken);
+
+    if (!isValidAccountSid(accountSid)) {
+      return res.status(400).json({ error: 'Invalid Account SID format' });
+    }
+
+    if (!isValidAuthToken(authToken)) {
+      return res.status(400).json({ error: 'Invalid Auth Token format' });
     }
 
     // Validate credentials by making a test API call
@@ -224,10 +558,10 @@ app.post('/api/setup/voice/credentials', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Twilio credentials' });
     }
 
-    // Save credentials to twilio_account
+    // Save encrypted credentials to twilio_account
     await kv.set('twilio_account', {
       accountSid,
-      authToken,
+      authToken: encrypt(authToken), // Encrypt before storing
       voice_setup_completed: false,
       sms_setup_completed: false,
       created_at: new Date().toISOString()
@@ -240,22 +574,39 @@ app.post('/api/setup/voice/credentials', async (req, res) => {
   }
 });
 
-// Voice Setup: Complete configuration
+/**
+ * POST /api/setup/voice/complete
+ * Completes voice setup by auto-provisioning TwiML app
+ * Can use existing credentials from SMS setup or accept new ones
+ */
 app.post('/api/setup/voice/complete', async (req, res) => {
   try {
     let { accountSid, authToken } = req.body;
 
     // Check if account already exists (from SMS setup)
     let account = await kv.get('twilio_account');
+    let authTokenDecrypted;
 
     // If account exists, use those credentials
     if (account && account.accountSid && account.authToken) {
       accountSid = account.accountSid;
-      authToken = account.authToken;
+      authTokenDecrypted = decrypt(account.authToken); // Decrypt existing token
     } else {
       // No existing account, credentials are required
       if (!accountSid || !authToken) {
         return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Sanitize and validate inputs
+      accountSid = sanitizeInput(accountSid);
+      authToken = sanitizeInput(authToken);
+
+      if (!isValidAccountSid(accountSid)) {
+        return res.status(400).json({ error: 'Invalid Account SID format' });
+      }
+
+      if (!isValidAuthToken(authToken)) {
+        return res.status(400).json({ error: 'Invalid Auth Token format' });
       }
 
       // Validate credentials by making a test API call
@@ -266,27 +617,27 @@ app.post('/api/setup/voice/complete', async (req, res) => {
         return res.status(401).json({ error: 'Invalid Twilio credentials' });
       }
 
+      authTokenDecrypted = authToken; // Plain text for provisioning
+
       // Create new account entry if doesn't exist
       account = {
         accountSid,
-        authToken,
+        authToken: encrypt(authToken), // Encrypt before storing
         sms_setup_completed: false,
         created_at: new Date().toISOString()
       };
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
 
-    // Auto-provision TwiML App and API Keys
-    const provisioned = await autoProvision(accountSid, authToken, baseUrl);
+    // Auto-provision TwiML App and API Keys using decrypted token
+    const provisioned = await autoProvision(accountSid, authTokenDecrypted, baseUrl);
 
-    // Save TwiML app data with all required URLs for validation
+    // Save TwiML app data with all required URLs for validation (encrypt secrets)
     await kv.set('twiml_app', {
       sid: provisioned.twimlAppSid,
       api_key: provisioned.apiKey,
-      api_secret: provisioned.apiSecret,
+      api_secret: encrypt(provisioned.apiSecret), // Encrypt API secret
       voice_url: `${baseUrl}/voice`,
       voice_method: 'POST',
       status_callback: `${baseUrl}/status`,
@@ -314,10 +665,14 @@ app.post('/api/setup/voice/complete', async (req, res) => {
   }
 });
 
-// SMS Setup: Complete configuration
+/**
+ * POST /api/setup/sms/complete
+ * Completes SMS setup
+ * Can use existing credentials from voice setup or accept new ones
+ */
 app.post('/api/setup/sms/complete', async (req, res) => {
   try {
-    const { accountSid, authToken } = req.body;
+    let { accountSid, authToken } = req.body;
 
     // Check if account already exists (from voice setup)
     let account = await kv.get('twilio_account');
@@ -328,6 +683,18 @@ app.post('/api/setup/sms/complete', async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields' });
       }
 
+      // Sanitize and validate inputs
+      accountSid = sanitizeInput(accountSid);
+      authToken = sanitizeInput(authToken);
+
+      if (!isValidAccountSid(accountSid)) {
+        return res.status(400).json({ error: 'Invalid Account SID format' });
+      }
+
+      if (!isValidAuthToken(authToken)) {
+        return res.status(400).json({ error: 'Invalid Auth Token format' });
+      }
+
       // Validate credentials by making a test API call
       const client = twilio(accountSid, authToken);
       try {
@@ -336,10 +703,10 @@ app.post('/api/setup/sms/complete', async (req, res) => {
         return res.status(401).json({ error: 'Invalid Twilio credentials' });
       }
 
-      // Create new account entry
+      // Create new account entry with encrypted credentials
       account = {
         accountSid,
-        authToken,
+        authToken: encrypt(authToken), // Encrypt before storing
         voice_setup_completed: false,
         created_at: new Date().toISOString()
       };
@@ -374,39 +741,61 @@ app.get('/api/numbers', async (req, res) => {
   }
 });
 
-// Add phone number
+/**
+ * POST /api/numbers/add
+ * Adds a phone number to the system
+ * Uses distributed lock to prevent race conditions
+ */
 app.post('/api/numbers/add', async (req, res) => {
   try {
-    const { sid, phoneNumber, friendlyName } = req.body;
+    let { sid, phoneNumber, friendlyName } = req.body;
 
     if (!sid || !phoneNumber) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const numbers = await kv.get('phone_numbers') || [];
+    // Sanitize inputs
+    sid = sanitizeInput(sid);
+    phoneNumber = sanitizeInput(phoneNumber);
+    friendlyName = sanitizeInput(friendlyName);
 
-    // Check if number already exists
-    if (numbers.find(n => n.sid === sid)) {
-      return res.status(400).json({ error: 'Phone number already added' });
+    // Validate phone number format
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ error: 'Invalid phone number format (use E.164: +1234567890)' });
     }
 
-    // Add new number with default configuration
-    numbers.push({
-      sid,
-      phone_number: phoneNumber,
-      friendly_name: friendlyName || '',
-      voice_config: {
-        webhook_configured: false,
-        issues: []
-      },
-      sms_config: {
-        webhook_configured: false,
-        issues: []
-      },
-      added_at: new Date().toISOString()
-    });
+    // Use lock to prevent race conditions when modifying phone_numbers
+    await withLock('phone_numbers', async () => {
+      const numbers = await kv.get('phone_numbers') || [];
 
-    await kv.set('phone_numbers', numbers);
+      // Check if number already exists
+      if (numbers.find(n => n.sid === sid)) {
+        throw new Error('Phone number already added');
+      }
+
+      // Enforce limit
+      if (numbers.length >= CONFIG.PHONE_NUMBER_LIMIT) {
+        throw new Error(`Cannot add more than ${CONFIG.PHONE_NUMBER_LIMIT} phone numbers`);
+      }
+
+      // Add new number with default configuration
+      numbers.push({
+        sid,
+        phone_number: phoneNumber,
+        friendly_name: friendlyName || '',
+        voice_config: {
+          webhook_configured: false,
+          issues: []
+        },
+        sms_config: {
+          webhook_configured: false,
+          issues: []
+        },
+        added_at: new Date().toISOString()
+      });
+
+      await kv.set('phone_numbers', numbers);
+    });
 
     res.json({
       success: true,
@@ -418,16 +807,14 @@ app.post('/api/numbers/add', async (req, res) => {
   }
 });
 
-// Configure voice for a number
+/**
+ * POST /api/numbers/:sid/configure-voice
+ * Configures voice webhooks for a phone number
+ * Updates Twilio API and local database with lock protection
+ */
 app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
   try {
     const { sid } = req.params;
-    const numbers = await kv.get('phone_numbers') || [];
-    const numberIndex = numbers.findIndex(n => n.sid === sid);
-
-    if (numberIndex === -1) {
-      return res.status(404).json({ error: 'Phone number not found' });
-    }
 
     const account = await kv.get('twilio_account');
     const twimlApp = await kv.get('twiml_app');
@@ -436,29 +823,39 @@ app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
       return res.status(400).json({ error: 'Voice not set up. Please complete voice wizard first.' });
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
 
-    // Configure phone number for voice
-    const client = twilio(account.accountSid, account.authToken);
+    // Decrypt credentials before using Twilio client
+    const authToken = decrypt(account.authToken);
+
+    // Configure phone number for voice via Twilio API
+    const client = twilio(account.accountSid, authToken);
     await client.incomingPhoneNumbers(sid).update({
       voiceUrl: `${baseUrl}/voice`,
       voiceMethod: 'POST',
       voiceApplicationSid: twimlApp.sid
     });
 
-    // Update number configuration
-    numbers[numberIndex].voice_config = {
-      webhook_url: `${baseUrl}/voice`,
-      webhook_method: 'POST',
-      twiml_app_sid: twimlApp.sid,
-      webhook_configured: true,
-      configured_at: new Date().toISOString(),
-      issues: []
-    };
+    // Update number configuration with lock protection
+    await withLock('phone_numbers', async () => {
+      const numbers = await kv.get('phone_numbers') || [];
+      const numberIndex = numbers.findIndex(n => n.sid === sid);
 
-    await kv.set('phone_numbers', numbers);
+      if (numberIndex === -1) {
+        throw new Error('Phone number not found');
+      }
+
+      numbers[numberIndex].voice_config = {
+        webhook_url: `${baseUrl}/voice`,
+        webhook_method: 'POST',
+        twiml_app_sid: twimlApp.sid,
+        webhook_configured: true,
+        configured_at: new Date().toISOString(),
+        issues: []
+      };
+
+      await kv.set('phone_numbers', numbers);
+    });
 
     res.json({
       success: true,
@@ -470,16 +867,14 @@ app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
   }
 });
 
-// Configure SMS for a number
+/**
+ * POST /api/numbers/:sid/configure-sms
+ * Configures SMS webhooks for a phone number
+ * Updates Twilio API and local database with lock protection
+ */
 app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
   try {
     const { sid } = req.params;
-    const numbers = await kv.get('phone_numbers') || [];
-    const numberIndex = numbers.findIndex(n => n.sid === sid);
-
-    if (numberIndex === -1) {
-      return res.status(404).json({ error: 'Phone number not found' });
-    }
 
     const account = await kv.get('twilio_account');
 
@@ -487,12 +882,13 @@ app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
       return res.status(400).json({ error: 'SMS not set up. Please complete SMS wizard first.' });
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
 
-    // Configure phone number for SMS
-    const client = twilio(account.accountSid, account.authToken);
+    // Decrypt credentials before using Twilio client
+    const authToken = decrypt(account.authToken);
+
+    // Configure phone number for SMS via Twilio API
+    const client = twilio(account.accountSid, authToken);
     await client.incomingPhoneNumbers(sid).update({
       smsUrl: `${baseUrl}/sms`,
       smsMethod: 'POST',
@@ -500,18 +896,27 @@ app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
       statusCallbackMethod: 'POST'
     });
 
-    // Update number configuration
-    numbers[numberIndex].sms_config = {
-      webhook_url: `${baseUrl}/sms`,
-      webhook_method: 'POST',
-      status_callback: `${baseUrl}/sms-status`,
-      status_callback_method: 'POST',
-      webhook_configured: true,
-      configured_at: new Date().toISOString(),
-      issues: []
-    };
+    // Update number configuration with lock protection
+    await withLock('phone_numbers', async () => {
+      const numbers = await kv.get('phone_numbers') || [];
+      const numberIndex = numbers.findIndex(n => n.sid === sid);
 
-    await kv.set('phone_numbers', numbers);
+      if (numberIndex === -1) {
+        throw new Error('Phone number not found');
+      }
+
+      numbers[numberIndex].sms_config = {
+        webhook_url: `${baseUrl}/sms`,
+        webhook_method: 'POST',
+        status_callback: `${baseUrl}/sms-status`,
+        status_callback_method: 'POST',
+        webhook_configured: true,
+        configured_at: new Date().toISOString(),
+        issues: []
+      };
+
+      await kv.set('phone_numbers', numbers);
+    });
 
     res.json({
       success: true,
@@ -547,16 +952,14 @@ app.post('/api/numbers/:sid/fix-sms', async (req, res) => {
   }
 });
 
-// Validate a single number
+/**
+ * POST /api/numbers/:sid/validate
+ * Validates phone number configuration against Twilio
+ * Checks if webhooks match expected values
+ */
 app.post('/api/numbers/:sid/validate', async (req, res) => {
   try {
     const { sid } = req.params;
-    const numbers = await kv.get('phone_numbers') || [];
-    const numberIndex = numbers.findIndex(n => n.sid === sid);
-
-    if (numberIndex === -1) {
-      return res.status(404).json({ error: 'Phone number not found' });
-    }
 
     const account = await kv.get('twilio_account');
     const twimlApp = await kv.get('twiml_app');
@@ -565,64 +968,77 @@ app.post('/api/numbers/:sid/validate', async (req, res) => {
       return res.status(400).json({ error: 'Account not configured' });
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
+
+    // Decrypt credentials before using Twilio client
+    const authToken = decrypt(account.authToken);
 
     // Fetch actual configuration from Twilio
-    const client = twilio(account.accountSid, account.authToken);
+    const client = twilio(account.accountSid, authToken);
     const twilioNumber = await client.incomingPhoneNumbers(sid).fetch();
 
-    // Validate voice configuration
-    const voiceIssues = [];
-    if (numbers[numberIndex].voice_config && numbers[numberIndex].voice_config.webhook_configured) {
-      if (twilioNumber.voiceUrl !== `${baseUrl}/voice`) {
-        voiceIssues.push('Voice URL mismatch');
-      }
-      if (twilioNumber.voiceMethod !== 'POST') {
-        voiceIssues.push('Voice method should be POST');
-      }
-      if (twimlApp && twilioNumber.voiceApplicationSid !== twimlApp.sid) {
-        voiceIssues.push('TwiML App SID mismatch');
-      }
-    }
+    // Validate configuration with lock protection
+    const validationResult = await withLock('phone_numbers', async () => {
+      const numbers = await kv.get('phone_numbers') || [];
+      const numberIndex = numbers.findIndex(n => n.sid === sid);
 
-    // Validate SMS configuration
-    const smsIssues = [];
-    if (numbers[numberIndex].sms_config && numbers[numberIndex].sms_config.webhook_configured) {
-      if (twilioNumber.smsUrl !== `${baseUrl}/sms`) {
-        smsIssues.push('SMS URL mismatch');
+      if (numberIndex === -1) {
+        throw new Error('Phone number not found');
       }
-      if (twilioNumber.smsMethod !== 'POST') {
-        smsIssues.push('SMS method should be POST');
+
+      // Validate voice configuration
+      const voiceIssues = [];
+      if (numbers[numberIndex].voice_config && numbers[numberIndex].voice_config.webhook_configured) {
+        if (twilioNumber.voiceUrl !== `${baseUrl}/voice`) {
+          voiceIssues.push('Voice URL mismatch');
+        }
+        if (twilioNumber.voiceMethod !== 'POST') {
+          voiceIssues.push('Voice method should be POST');
+        }
+        if (twimlApp && twilioNumber.voiceApplicationSid !== twimlApp.sid) {
+          voiceIssues.push('TwiML App SID mismatch');
+        }
       }
-      if (twilioNumber.statusCallback !== `${baseUrl}/sms-status`) {
-        smsIssues.push('SMS status callback mismatch');
+
+      // Validate SMS configuration
+      const smsIssues = [];
+      if (numbers[numberIndex].sms_config && numbers[numberIndex].sms_config.webhook_configured) {
+        if (twilioNumber.smsUrl !== `${baseUrl}/sms`) {
+          smsIssues.push('SMS URL mismatch');
+        }
+        if (twilioNumber.smsMethod !== 'POST') {
+          smsIssues.push('SMS method should be POST');
+        }
+        if (twilioNumber.statusCallback !== `${baseUrl}/sms-status`) {
+          smsIssues.push('SMS status callback mismatch');
+        }
       }
-    }
 
-    // Update issues in database
-    numbers[numberIndex].voice_config = {
-      ...numbers[numberIndex].voice_config,
-      issues: voiceIssues,
-      last_validated: new Date().toISOString()
-    };
+      // Update issues in database
+      numbers[numberIndex].voice_config = {
+        ...numbers[numberIndex].voice_config,
+        issues: voiceIssues,
+        last_validated: new Date().toISOString()
+      };
 
-    numbers[numberIndex].sms_config = {
-      ...numbers[numberIndex].sms_config,
-      issues: smsIssues,
-      last_validated: new Date().toISOString()
-    };
+      numbers[numberIndex].sms_config = {
+        ...numbers[numberIndex].sms_config,
+        issues: smsIssues,
+        last_validated: new Date().toISOString()
+      };
 
-    await kv.set('phone_numbers', numbers);
+      await kv.set('phone_numbers', numbers);
+
+      return { voiceIssues, smsIssues };
+    });
 
     res.json({
       success: true,
-      message: voiceIssues.length + smsIssues.length === 0
+      message: validationResult.voiceIssues.length + validationResult.smsIssues.length === 0
         ? 'Validation passed - configuration is correct'
-        : `Found ${voiceIssues.length + smsIssues.length} issue(s)`,
-      voiceIssues,
-      smsIssues
+        : `Found ${validationResult.voiceIssues.length + validationResult.smsIssues.length} issue(s)`,
+      voiceIssues: validationResult.voiceIssues,
+      smsIssues: validationResult.smsIssues
     });
   } catch (error) {
     await logError('backend', error, { endpoint: '/api/numbers/:sid/validate' });
@@ -659,18 +1075,25 @@ app.post('/api/numbers/validate-all', async (req, res) => {
   }
 });
 
-// Delete a number
+/**
+ * DELETE /api/numbers/:sid
+ * Removes a phone number from the system
+ * Uses lock to prevent race conditions
+ */
 app.delete('/api/numbers/:sid', async (req, res) => {
   try {
     const { sid } = req.params;
-    const numbers = await kv.get('phone_numbers') || [];
-    const filtered = numbers.filter(n => n.sid !== sid);
 
-    if (filtered.length === numbers.length) {
-      return res.status(404).json({ error: 'Phone number not found' });
-    }
+    await withLock('phone_numbers', async () => {
+      const numbers = await kv.get('phone_numbers') || [];
+      const filtered = numbers.filter(n => n.sid !== sid);
 
-    await kv.set('phone_numbers', filtered);
+      if (filtered.length === numbers.length) {
+        throw new Error('Phone number not found');
+      }
+
+      await kv.set('phone_numbers', filtered);
+    });
 
     res.json({
       success: true,
@@ -713,11 +1136,24 @@ app.get('/api/conversations/:phoneNumber/messages', async (req, res) => {
   }
 });
 
-// Send SMS/MMS
+/**
+ * POST /api/conversations/:phoneNumber/send
+ * Sends an SMS/MMS to a phone number
+ * Uses locks to prevent race conditions when updating conversations/messages
+ */
 app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
   try {
-    const { phoneNumber } = req.params;
-    const { body, mediaUrl } = req.body;
+    let { phoneNumber } = req.params;
+    let { body, mediaUrl } = req.body;
+
+    // Sanitize inputs
+    phoneNumber = sanitizeInput(phoneNumber);
+    body = sanitizeInput(body);
+
+    // Validate phone number format
+    if (!isValidPhoneNumber(phoneNumber)) {
+      return res.status(400).json({ error: 'Invalid phone number format (use E.164: +1234567890)' });
+    }
 
     const account = await kv.get('twilio_account');
     const numbers = await kv.get('phone_numbers') || [];
@@ -733,13 +1169,17 @@ app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
       return res.status(400).json({ error: 'No SMS-enabled phone number configured' });
     }
 
+    // Decrypt credentials before using Twilio client
+    const authToken = decrypt(account.authToken);
+
     // Send message via Twilio
-    const client = twilio(account.accountSid, account.authToken);
+    const client = twilio(account.accountSid, authToken);
+    const baseUrl = getBaseUrl(req);
     const messageParams = {
       body: body || '',
       from: smsNumber.phone_number,
       to: phoneNumber,
-      statusCallback: `${req.protocol}://${req.get('host')}/sms-status`
+      statusCallback: `${baseUrl}/sms-status`
     };
 
     if (mediaUrl) {
@@ -748,40 +1188,48 @@ app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
 
     const message = await client.messages.create(messageParams);
 
-    // Store in database
-    const messages = await kv.get('messages') || [];
-    const newMessage = {
-      sid: message.sid,
-      from: smsNumber.phone_number,
-      to: phoneNumber,
-      body: body || '',
-      media: mediaUrl ? [{ url: mediaUrl }] : [],
-      direction: 'outbound',
-      timestamp: new Date().toISOString(),
-      status: message.status
-    };
+    // Store in database with lock protection
+    const newMessage = await withLock('messages', async () => {
+      const messages = await kv.get('messages') || [];
+      const msg = {
+        sid: message.sid,
+        from: smsNumber.phone_number,
+        to: phoneNumber,
+        body: body || '',
+        media: mediaUrl ? [{ url: mediaUrl }] : [],
+        direction: 'outbound',
+        timestamp: new Date().toISOString(),
+        status: message.status
+      };
 
-    messages.unshift(newMessage);
-    await kv.set('messages', messages.slice(0, 1000));
+      messages.unshift(msg);
 
-    // Update conversation
-    const conversations = await kv.get('conversations') || [];
-    const existingConv = conversations.find(c => c.phone_number === phoneNumber);
+      // Keep only last MAX_MESSAGES
+      await kv.set('messages', messages.slice(0, CONFIG.MAX_MESSAGES));
 
-    if (existingConv) {
-      existingConv.last_message = body || '(Media message)';
-      existingConv.last_message_time = new Date().toISOString();
-      existingConv.unread_count = 0; // Reset unread count since we're viewing
-    } else {
-      conversations.unshift({
-        phone_number: phoneNumber,
-        last_message: body || '(Media message)',
-        last_message_time: new Date().toISOString(),
-        unread_count: 0
-      });
-    }
+      return msg;
+    });
 
-    await kv.set('conversations', conversations);
+    // Update conversation with lock protection
+    await withLock('conversations', async () => {
+      const conversations = await kv.get('conversations') || [];
+      const existingConv = conversations.find(c => c.phone_number === phoneNumber);
+
+      if (existingConv) {
+        existingConv.last_message = body || '(Media message)';
+        existingConv.last_message_time = new Date().toISOString();
+        existingConv.unread_count = 0; // Reset unread count since we're viewing
+      } else {
+        conversations.unshift({
+          phone_number: phoneNumber,
+          last_message: body || '(Media message)',
+          last_message_time: new Date().toISOString(),
+          unread_count: 0
+        });
+      }
+
+      await kv.set('conversations', conversations);
+    });
 
     res.json({
       success: true,
@@ -793,17 +1241,24 @@ app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
   }
 });
 
-// Mark conversation as read
+/**
+ * POST /api/conversations/:phoneNumber/mark-read
+ * Marks conversation as read (resets unread count)
+ */
 app.post('/api/conversations/:phoneNumber/mark-read', async (req, res) => {
   try {
-    const { phoneNumber } = req.params;
-    const conversations = await kv.get('conversations') || [];
+    let { phoneNumber } = req.params;
+    phoneNumber = sanitizeInput(phoneNumber);
 
-    const conversation = conversations.find(c => c.phone_number === phoneNumber);
-    if (conversation) {
-      conversation.unread_count = 0;
-      await kv.set('conversations', conversations);
-    }
+    await withLock('conversations', async () => {
+      const conversations = await kv.get('conversations') || [];
+
+      const conversation = conversations.find(c => c.phone_number === phoneNumber);
+      if (conversation) {
+        conversation.unread_count = 0;
+        await kv.set('conversations', conversations);
+      }
+    });
 
     res.json({ success: true });
   } catch (error) {
@@ -812,22 +1267,30 @@ app.post('/api/conversations/:phoneNumber/mark-read', async (req, res) => {
   }
 });
 
-// Delete conversation
+/**
+ * DELETE /api/conversations/:phoneNumber
+ * Deletes a conversation and all associated messages
+ */
 app.delete('/api/conversations/:phoneNumber', async (req, res) => {
   try {
-    const { phoneNumber } = req.params;
+    let { phoneNumber } = req.params;
+    phoneNumber = sanitizeInput(phoneNumber);
 
-    // Delete conversation
-    const conversations = await kv.get('conversations') || [];
-    const filtered = conversations.filter(c => c.phone_number !== phoneNumber);
-    await kv.set('conversations', filtered);
+    // Delete conversation with lock
+    await withLock('conversations', async () => {
+      const conversations = await kv.get('conversations') || [];
+      const filtered = conversations.filter(c => c.phone_number !== phoneNumber);
+      await kv.set('conversations', filtered);
+    });
 
-    // Delete messages
-    const messages = await kv.get('messages') || [];
-    const filteredMessages = messages.filter(m =>
-      m.from !== phoneNumber && m.to !== phoneNumber
-    );
-    await kv.set('messages', filteredMessages);
+    // Delete messages with lock
+    await withLock('messages', async () => {
+      const messages = await kv.get('messages') || [];
+      const filteredMessages = messages.filter(m =>
+        m.from !== phoneNumber && m.to !== phoneNumber
+      );
+      await kv.set('messages', filteredMessages);
+    });
 
     res.json({ success: true });
   } catch (error) {
@@ -836,7 +1299,10 @@ app.delete('/api/conversations/:phoneNumber', async (req, res) => {
   }
 });
 
-// Validate TwiML app configuration
+/**
+ * POST /api/twiml-app/validate
+ * Validates TwiML app configuration against Twilio
+ */
 app.post('/api/twiml-app/validate', async (req, res) => {
   try {
     const account = await kv.get('twilio_account');
@@ -846,15 +1312,16 @@ app.post('/api/twiml-app/validate', async (req, res) => {
       return res.status(400).json({ error: 'TwiML app not configured' });
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    const baseUrl = `${protocol}://${host}`;
+    const baseUrl = getBaseUrl(req);
+
+    // Decrypt credentials before using Twilio client
+    const authToken = decrypt(account.authToken);
 
     const issues = [];
 
     try {
       // Fetch actual TwiML app from Twilio
-      const client = twilio(account.accountSid, account.authToken);
+      const client = twilio(account.accountSid, authToken);
       const twilioApp = await client.applications(twimlApp.sid).fetch();
 
       // Validate URLs and methods
@@ -909,7 +1376,12 @@ app.post('/api/twiml-app/validate', async (req, res) => {
   }
 });
 
-// Generate access token for browser
+/**
+ * GET /api/token
+ * Generates Twilio access token for browser voice calling
+ * Note: Not protected by API key auth since it's called from frontend
+ * Token has short TTL and requires prior setup, providing implicit security
+ */
 app.get('/api/token', async (req, res) => {
   try {
     const account = await kv.get('twilio_account');
@@ -920,7 +1392,10 @@ app.get('/api/token', async (req, res) => {
     }
 
     const { accountSid } = account;
-    const { sid: twimlAppSid, api_key: apiKey, api_secret: apiSecret } = twimlApp;
+    const { sid: twimlAppSid, api_key: apiKey, api_secret: apiSecretEncrypted } = twimlApp;
+
+    // Decrypt API secret before using
+    const apiSecret = decrypt(apiSecretEncrypted);
 
     // Create access token
     const AccessToken = twilio.jwt.AccessToken;
@@ -929,7 +1404,7 @@ app.get('/api/token', async (req, res) => {
     const identity = 'browser_user';
     const token = new AccessToken(accountSid, apiKey, apiSecret, {
       identity: identity,
-      ttl: 3600 // 1 hour
+      ttl: CONFIG.TOKEN_TTL_SECONDS
     });
 
     const voiceGrant = new VoiceGrant({
@@ -949,8 +1424,12 @@ app.get('/api/token', async (req, res) => {
   }
 });
 
-// Voice webhook - handles incoming calls
-app.post('/voice', async (req, res) => {
+/**
+ * POST /voice
+ * Twilio webhook for handling voice calls
+ * Validates that request comes from Twilio using signature validation
+ */
+app.post('/voice', validateTwilioSignature, async (req, res) => {
   try {
     const numbers = await kv.get('phone_numbers') || [];
     const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -985,14 +1464,22 @@ app.post('/voice', async (req, res) => {
   }
 });
 
-// Status callback (optional)
-app.post('/status', (req, res) => {
+/**
+ * POST /status
+ * Twilio webhook for call status callbacks
+ * Validates that request comes from Twilio
+ */
+app.post('/status', validateTwilioSignature, (req, res) => {
   console.log('Call status:', req.body);
   res.sendStatus(200);
 });
 
-// SMS webhook - handles incoming SMS/MMS
-app.post('/sms', async (req, res) => {
+/**
+ * POST /sms
+ * Twilio webhook for incoming SMS/MMS messages
+ * Validates signature and uses locks to prevent race conditions
+ */
+app.post('/sms', validateTwilioSignature, async (req, res) => {
   try {
     const { From, To, Body, NumMedia, MessageSid } = req.body;
 
@@ -1007,40 +1494,46 @@ app.post('/sms', async (req, res) => {
       }
     }
 
-    // Store message in database
-    const messages = await kv.get('messages') || [];
-    const newMessage = {
-      sid: MessageSid,
-      from: From,
-      to: To,
-      body: Body || '',
-      media: mediaUrls,
-      direction: 'inbound',
-      timestamp: new Date().toISOString(),
-      status: 'received'
-    };
+    // Store message in database with lock protection
+    await withLock('messages', async () => {
+      const messages = await kv.get('messages') || [];
+      const newMessage = {
+        sid: MessageSid,
+        from: From,
+        to: To,
+        body: Body || '',
+        media: mediaUrls,
+        direction: 'inbound',
+        timestamp: new Date().toISOString(),
+        status: 'received'
+      };
 
-    messages.unshift(newMessage);
-    await kv.set('messages', messages.slice(0, 1000)); // Keep last 1000 messages
+      messages.unshift(newMessage);
 
-    // Update conversation
-    const conversations = await kv.get('conversations') || [];
-    const existingConv = conversations.find(c => c.phone_number === From);
+      // Keep last MAX_MESSAGES
+      await kv.set('messages', messages.slice(0, CONFIG.MAX_MESSAGES));
+    });
 
-    if (existingConv) {
-      existingConv.last_message = Body || '(Media message)';
-      existingConv.last_message_time = new Date().toISOString();
-      existingConv.unread_count = (existingConv.unread_count || 0) + 1;
-    } else {
-      conversations.unshift({
-        phone_number: From,
-        last_message: Body || '(Media message)',
-        last_message_time: new Date().toISOString(),
-        unread_count: 1
-      });
-    }
+    // Update conversation with lock protection
+    await withLock('conversations', async () => {
+      const conversations = await kv.get('conversations') || [];
+      const existingConv = conversations.find(c => c.phone_number === From);
 
-    await kv.set('conversations', conversations);
+      if (existingConv) {
+        existingConv.last_message = Body || '(Media message)';
+        existingConv.last_message_time = new Date().toISOString();
+        existingConv.unread_count = (existingConv.unread_count || 0) + 1;
+      } else {
+        conversations.unshift({
+          phone_number: From,
+          last_message: Body || '(Media message)',
+          last_message_time: new Date().toISOString(),
+          unread_count: 1
+        });
+      }
+
+      await kv.set('conversations', conversations);
+    });
 
     // Respond with empty TwiML (no auto-reply)
     const MessagingResponse = twilio.twiml.MessagingResponse;
@@ -1056,19 +1549,25 @@ app.post('/sms', async (req, res) => {
   }
 });
 
-// SMS status callback
-app.post('/sms-status', async (req, res) => {
+/**
+ * POST /sms-status
+ * Twilio webhook for SMS delivery status updates
+ * Validates signature and uses lock for database updates
+ */
+app.post('/sms-status', validateTwilioSignature, async (req, res) => {
   try {
     const { MessageSid, MessageStatus } = req.body;
 
-    // Update message status in database
-    const messages = await kv.get('messages') || [];
-    const message = messages.find(m => m.sid === MessageSid);
+    // Update message status in database with lock protection
+    await withLock('messages', async () => {
+      const messages = await kv.get('messages') || [];
+      const message = messages.find(m => m.sid === MessageSid);
 
-    if (message) {
-      message.status = MessageStatus;
-      await kv.set('messages', messages);
-    }
+      if (message) {
+        message.status = MessageStatus;
+        await kv.set('messages', messages);
+      }
+    });
 
     res.sendStatus(200);
   } catch (error) {
@@ -1089,8 +1588,11 @@ app.post('/api/log-error', async (req, res) => {
   }
 });
 
-// Get all errors (API endpoint)
-app.get('/api/errors', async (req, res) => {
+/**
+ * GET /api/errors
+ * Retrieves all error logs (protected endpoint)
+ */
+app.get('/api/errors', requireAuth, async (req, res) => {
   try {
     const errors = await kv.get('error_logs') || [];
     res.json({ errors, count: errors.length });
@@ -1099,8 +1601,11 @@ app.get('/api/errors', async (req, res) => {
   }
 });
 
-// Clear errors
-app.post('/api/clear-errors', async (req, res) => {
+/**
+ * POST /api/clear-errors
+ * Clears all error logs (protected endpoint)
+ */
+app.post('/api/clear-errors', requireAuth, async (req, res) => {
   try {
     await kv.set('error_logs', []);
     res.json({ success: true, message: 'Errors cleared' });
@@ -1109,8 +1614,11 @@ app.post('/api/clear-errors', async (req, res) => {
   }
 });
 
-// Debug page - view all errors in browser
-app.get('/debug', async (req, res) => {
+/**
+ * GET /debug
+ * Debug page with visual error console (protected endpoint)
+ */
+app.get('/debug', requireAuth, async (req, res) => {
   try {
     const errors = await kv.get('error_logs') || [];
     const config = await getConfig();

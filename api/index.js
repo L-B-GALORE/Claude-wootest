@@ -342,8 +342,14 @@ async function logError(type, error, context = {}) {
 }
 
 /**
- * Auto-provisions TwiML App and API Key for voice calling
+ * Auto-provisions TwiML App and API Keys for voice calling
  * Called during voice wizard setup
+ *
+ * Creates 2 API Keys following Twilio security best practices:
+ * 1. REST API Key (Standard) - for all server-to-server REST API calls
+ * 2. Access Token Key (Standard) - for generating browser SDK access tokens
+ *
+ * This separation allows independent key rotation and follows principle of least privilege
  */
 async function autoProvision(accountSid, authToken, baseUrl) {
   const client = twilio(accountSid, authToken);
@@ -361,20 +367,74 @@ async function autoProvision(accountSid, authToken, baseUrl) {
       statusCallbackMethod: 'POST'
     });
 
-    // Create API Key for generating access tokens
-    const apiKey = await client.newKeys.create({
-      friendlyName: `Browser Phone API Key ${timestamp}`
+    // Create API Key #1: For REST API calls (phone config, SMS sending, validation, etc.)
+    // Type: Standard - can do everything except manage API Keys/Accounts
+    const restApiKey = await client.newKeys.create({
+      friendlyName: `Browser Phone REST API Key ${timestamp}`
+    });
+
+    // Create API Key #2: For generating Access Tokens (browser SDK authentication)
+    // Type: Standard - required for creating client access tokens
+    const accessTokenKey = await client.newKeys.create({
+      friendlyName: `Browser Phone Access Token Key ${timestamp}`
     });
 
     return {
       twimlAppSid: twimlApp.sid,
-      apiKey: apiKey.sid,
-      apiSecret: apiKey.secret
+      // REST API Key (for server-to-server API calls)
+      restApiKeySid: restApiKey.sid,
+      restApiKeySecret: restApiKey.secret,
+      // Access Token Key (for browser SDK tokens)
+      accessTokenKeySid: accessTokenKey.sid,
+      accessTokenKeySecret: accessTokenKey.secret
     };
   } catch (error) {
     console.error('Auto-provisioning error:', error);
     throw error;
   }
+}
+
+/**
+ * Get Twilio REST API client using best practice authentication
+ *
+ * Follows Twilio security recommendations:
+ * 1. Prefers REST API Key (Standard) over Auth Token
+ * 2. Falls back to Auth Token for backward compatibility or emergency access
+ * 3. Never exposes credentials to client-side code
+ *
+ * Usage: const client = await getTwilioRestClient();
+ */
+async function getTwilioRestClient() {
+  const account = await kv.get('twilio_account');
+  const twimlApp = await kv.get('twiml_app');
+
+  if (!account || !account.accountSid) {
+    throw new Error('Twilio account not configured');
+  }
+
+  // PREFERRED: Use REST API Key (best practice for production)
+  if (twimlApp?.rest_api_key_sid && twimlApp?.rest_api_key_secret) {
+    const apiKeySid = twimlApp.rest_api_key_sid;
+    const apiKeySecret = decrypt(twimlApp.rest_api_key_secret);
+
+    return twilio(apiKeySid, apiKeySecret, {
+      accountSid: account.accountSid
+    });
+  }
+
+  // FALLBACK: Use Auth Token (for backward compatibility or if API key not set)
+  // This happens when:
+  // - App was set up before Phase 1B migration
+  // - API key was manually revoked
+  // - Emergency access needed
+  if (account.authToken) {
+    const authToken = decrypt(account.authToken);
+    console.warn('Using Auth Token for REST API (consider migrating to API Key)');
+
+    return twilio(account.accountSid, authToken);
+  }
+
+  throw new Error('No valid Twilio credentials found (neither API Key nor Auth Token)');
 }
 
 // ============================================================================
@@ -411,17 +471,19 @@ app.post('/api/setup', async (req, res) => {
     // Get base URL from request
     const baseUrl = getBaseUrl(req);
 
-    // Auto-provision TwiML App and API Key
+    // Auto-provision TwiML App and API Keys
     const provisioned = await autoProvision(accountSid, authToken, baseUrl);
 
     // Save everything to KV (encrypt sensitive data)
+    // Note: Legacy structure for backward compatibility
     const config = {
       accountSid,
       authToken: encrypt(authToken), // Encrypt auth token
       phoneNumber,
       twimlAppSid: provisioned.twimlAppSid,
-      apiKey: provisioned.apiKey,
-      apiSecret: encrypt(provisioned.apiSecret), // Encrypt API secret
+      // Legacy fields (kept for compatibility)
+      apiKey: provisioned.accessTokenKeySid,
+      apiSecret: encrypt(provisioned.accessTokenKeySecret),
       initialized: true,
       baseUrl
     };
@@ -468,18 +530,12 @@ app.post('/api/reset', requireAuth, async (req, res) => {
 /**
  * GET /api/twilio/phone-numbers
  * Fetches all phone numbers from Twilio account
+ * Uses REST API Key for authentication
  */
 app.get('/api/twilio/phone-numbers', async (req, res) => {
   try {
-    const account = await kv.get('twilio_account');
-
-    if (!account || !account.accountSid || !account.authToken) {
-      return res.status(400).json({ error: 'Twilio credentials not configured' });
-    }
-
-    // Decrypt credentials before using
-    const authToken = decrypt(account.authToken);
-    const client = twilio(account.accountSid, authToken);
+    // Get Twilio client using REST API Key (preferred) or Auth Token (fallback)
+    const client = await getTwilioRestClient();
 
     // Fetch incoming phone numbers
     const numbers = await client.incomingPhoneNumbers.list({ limit: 100 });
@@ -527,6 +583,11 @@ app.get('/api/status', async (req, res) => {
 /**
  * POST /api/setup/voice/credentials
  * Validates and saves Twilio credentials for voice setup
+ *
+ * Note: This endpoint uses Auth Token directly (not API Key) because:
+ * - This is the INITIAL credential validation during setup
+ * - API Keys don't exist yet (created in next step)
+ * - Auth Token is required to create API Keys via autoProvision()
  */
 app.post('/api/setup/voice/credentials', async (req, res) => {
   try {
@@ -548,7 +609,8 @@ app.post('/api/setup/voice/credentials', async (req, res) => {
       return res.status(400).json({ error: 'Invalid Auth Token format' });
     }
 
-    // Validate credentials by making a test API call
+    // Validate credentials by making a test API call using Auth Token
+    // (This is one of the legitimate uses of Auth Token per Twilio best practices)
     const client = twilio(accountSid, authToken);
 
     try {
@@ -634,10 +696,23 @@ app.post('/api/setup/voice/complete', async (req, res) => {
     const provisioned = await autoProvision(accountSid, authTokenDecrypted, baseUrl);
 
     // Save TwiML app data with all required URLs for validation (encrypt secrets)
+    // New structure: Separate keys for REST API and Access Tokens
     await kv.set('twiml_app', {
       sid: provisioned.twimlAppSid,
-      api_key: provisioned.apiKey,
-      api_secret: encrypt(provisioned.apiSecret), // Encrypt API secret
+
+      // REST API Key (for server-to-server calls: phone config, SMS, validation)
+      rest_api_key_sid: provisioned.restApiKeySid,
+      rest_api_key_secret: encrypt(provisioned.restApiKeySecret),
+
+      // Access Token Key (for browser SDK authentication)
+      access_token_key_sid: provisioned.accessTokenKeySid,
+      access_token_key_secret: encrypt(provisioned.accessTokenKeySecret),
+
+      // Legacy fields (kept for backward compatibility with existing code)
+      api_key: provisioned.accessTokenKeySid,
+      api_secret: encrypt(provisioned.accessTokenKeySecret),
+
+      // TwiML App configuration
       voice_url: `${baseUrl}/voice`,
       voice_method: 'POST',
       status_callback: `${baseUrl}/status`,
@@ -669,6 +744,9 @@ app.post('/api/setup/voice/complete', async (req, res) => {
  * POST /api/setup/sms/complete
  * Completes SMS setup
  * Can use existing credentials from voice setup or accept new ones
+ *
+ * Note: Uses Auth Token for initial credential validation (when setting up fresh)
+ * This is appropriate because it's only validating new credentials during setup
  */
 app.post('/api/setup/sms/complete', async (req, res) => {
   try {
@@ -695,7 +773,8 @@ app.post('/api/setup/sms/complete', async (req, res) => {
         return res.status(400).json({ error: 'Invalid Auth Token format' });
       }
 
-      // Validate credentials by making a test API call
+      // Validate credentials by making a test API call using Auth Token
+      // (Legitimate use during initial setup - API Keys may not exist yet)
       const client = twilio(accountSid, authToken);
       try {
         await client.api.accounts(accountSid).fetch();
@@ -811,25 +890,24 @@ app.post('/api/numbers/add', async (req, res) => {
  * POST /api/numbers/:sid/configure-voice
  * Configures voice webhooks for a phone number
  * Updates Twilio API and local database with lock protection
+ * Uses REST API Key for authentication
  */
 app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
   try {
     const { sid } = req.params;
 
-    const account = await kv.get('twilio_account');
     const twimlApp = await kv.get('twiml_app');
 
-    if (!account || !twimlApp) {
+    if (!twimlApp) {
       return res.status(400).json({ error: 'Voice not set up. Please complete voice wizard first.' });
     }
 
     const baseUrl = getBaseUrl(req);
 
-    // Decrypt credentials before using Twilio client
-    const authToken = decrypt(account.authToken);
+    // Get Twilio client using REST API Key (preferred) or Auth Token (fallback)
+    const client = await getTwilioRestClient();
 
     // Configure phone number for voice via Twilio API
-    const client = twilio(account.accountSid, authToken);
     await client.incomingPhoneNumbers(sid).update({
       voiceUrl: `${baseUrl}/voice`,
       voiceMethod: 'POST',
@@ -871,6 +949,7 @@ app.post('/api/numbers/:sid/configure-voice', async (req, res) => {
  * POST /api/numbers/:sid/configure-sms
  * Configures SMS webhooks for a phone number
  * Updates Twilio API and local database with lock protection
+ * Uses REST API Key for authentication
  */
 app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
   try {
@@ -884,11 +963,10 @@ app.post('/api/numbers/:sid/configure-sms', async (req, res) => {
 
     const baseUrl = getBaseUrl(req);
 
-    // Decrypt credentials before using Twilio client
-    const authToken = decrypt(account.authToken);
+    // Get Twilio client using REST API Key (preferred) or Auth Token (fallback)
+    const client = await getTwilioRestClient();
 
     // Configure phone number for SMS via Twilio API
-    const client = twilio(account.accountSid, authToken);
     await client.incomingPhoneNumbers(sid).update({
       smsUrl: `${baseUrl}/sms`,
       smsMethod: 'POST',
@@ -956,25 +1034,20 @@ app.post('/api/numbers/:sid/fix-sms', async (req, res) => {
  * POST /api/numbers/:sid/validate
  * Validates phone number configuration against Twilio
  * Checks if webhooks match expected values
+ * Uses REST API Key for authentication
  */
 app.post('/api/numbers/:sid/validate', async (req, res) => {
   try {
     const { sid } = req.params;
 
-    const account = await kv.get('twilio_account');
     const twimlApp = await kv.get('twiml_app');
-
-    if (!account) {
-      return res.status(400).json({ error: 'Account not configured' });
-    }
 
     const baseUrl = getBaseUrl(req);
 
-    // Decrypt credentials before using Twilio client
-    const authToken = decrypt(account.authToken);
+    // Get Twilio client using REST API Key (preferred) or Auth Token (fallback)
+    const client = await getTwilioRestClient();
 
     // Fetch actual configuration from Twilio
-    const client = twilio(account.accountSid, authToken);
     const twilioNumber = await client.incomingPhoneNumbers(sid).fetch();
 
     // Validate configuration with lock protection
@@ -1140,6 +1213,7 @@ app.get('/api/conversations/:phoneNumber/messages', async (req, res) => {
  * POST /api/conversations/:phoneNumber/send
  * Sends an SMS/MMS to a phone number
  * Uses locks to prevent race conditions when updating conversations/messages
+ * Uses REST API Key for authentication
  */
 app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
   try {
@@ -1155,12 +1229,7 @@ app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number format (use E.164: +1234567890)' });
     }
 
-    const account = await kv.get('twilio_account');
     const numbers = await kv.get('phone_numbers') || [];
-
-    if (!account) {
-      return res.status(400).json({ error: 'Account not configured' });
-    }
 
     // Find first SMS-enabled number as sender
     const smsNumber = numbers.find(n => n.sms_config && n.sms_config.webhook_configured);
@@ -1169,11 +1238,9 @@ app.post('/api/conversations/:phoneNumber/send', async (req, res) => {
       return res.status(400).json({ error: 'No SMS-enabled phone number configured' });
     }
 
-    // Decrypt credentials before using Twilio client
-    const authToken = decrypt(account.authToken);
+    // Get Twilio client using REST API Key (preferred) or Auth Token (fallback)
+    const client = await getTwilioRestClient();
 
-    // Send message via Twilio
-    const client = twilio(account.accountSid, authToken);
     const baseUrl = getBaseUrl(req);
     const messageParams = {
       body: body || '',
@@ -1302,26 +1369,25 @@ app.delete('/api/conversations/:phoneNumber', async (req, res) => {
 /**
  * POST /api/twiml-app/validate
  * Validates TwiML app configuration against Twilio
+ * Uses REST API Key for authentication
  */
 app.post('/api/twiml-app/validate', async (req, res) => {
   try {
-    const account = await kv.get('twilio_account');
     const twimlApp = await kv.get('twiml_app');
 
-    if (!account || !twimlApp) {
+    if (!twimlApp) {
       return res.status(400).json({ error: 'TwiML app not configured' });
     }
 
     const baseUrl = getBaseUrl(req);
 
-    // Decrypt credentials before using Twilio client
-    const authToken = decrypt(account.authToken);
-
     const issues = [];
 
     try {
+      // Get Twilio client using REST API Key (preferred) or Auth Token (fallback)
+      const client = await getTwilioRestClient();
+
       // Fetch actual TwiML app from Twilio
-      const client = twilio(account.accountSid, authToken);
       const twilioApp = await client.applications(twimlApp.sid).fetch();
 
       // Validate URLs and methods
@@ -1381,6 +1447,8 @@ app.post('/api/twiml-app/validate', async (req, res) => {
  * Generates Twilio access token for browser voice calling
  * Note: Not protected by API key auth since it's called from frontend
  * Token has short TTL and requires prior setup, providing implicit security
+ *
+ * Uses dedicated Access Token API Key (separate from REST API Key)
  */
 app.get('/api/token', async (req, res) => {
   try {
@@ -1392,17 +1460,26 @@ app.get('/api/token', async (req, res) => {
     }
 
     const { accountSid } = account;
-    const { sid: twimlAppSid, api_key: apiKey, api_secret: apiSecretEncrypted } = twimlApp;
+    const { sid: twimlAppSid } = twimlApp;
+
+    // Use dedicated Access Token Key (preferred)
+    // Falls back to legacy api_key field for backward compatibility
+    const apiKeySid = twimlApp.access_token_key_sid || twimlApp.api_key;
+    const apiKeySecretEncrypted = twimlApp.access_token_key_secret || twimlApp.api_secret;
+
+    if (!apiKeySid || !apiKeySecretEncrypted) {
+      return res.status(500).json({ error: 'Access Token API Key not configured' });
+    }
 
     // Decrypt API secret before using
-    const apiSecret = decrypt(apiSecretEncrypted);
+    const apiKeySecret = decrypt(apiKeySecretEncrypted);
 
     // Create access token
     const AccessToken = twilio.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
     const identity = 'browser_user';
-    const token = new AccessToken(accountSid, apiKey, apiSecret, {
+    const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
       identity: identity,
       ttl: CONFIG.TOKEN_TTL_SECONDS
     });

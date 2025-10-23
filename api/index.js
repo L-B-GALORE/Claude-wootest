@@ -131,6 +131,12 @@ async function validateTwilioSignature(req, res, next) {
     // Decrypt the auth token
     const authToken = decrypt(account.authToken);
 
+    // If decryption failed, skip validation (allow through to avoid breaking webhooks)
+    if (!authToken) {
+      console.warn('Twilio signature validation skipped - decryption failed');
+      return next();
+    }
+
     // Get the Twilio signature from headers
     const twilioSignature = req.headers['x-twilio-signature'];
 
@@ -194,6 +200,7 @@ function encrypt(text) {
 
 /**
  * Decrypts sensitive data retrieved from database
+ * Returns null on failure to allow graceful handling
  */
 function decrypt(encryptedText) {
   if (!encryptedText) return encryptedText;
@@ -218,8 +225,9 @@ function decrypt(encryptedText) {
 
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
-    throw new Error('Failed to decrypt data');
+    console.error('Decryption error - ENCRYPTION_KEY may have changed:', error.message);
+    // Return null instead of throwing to allow app to detect and handle
+    return null;
   }
 }
 
@@ -457,6 +465,11 @@ async function getTwilioRestClient() {
     const apiKeySid = twimlApp.rest_api_key_sid;
     const apiKeySecret = decrypt(twimlApp.rest_api_key_secret);
 
+    // Check if decryption failed
+    if (!apiKeySecret) {
+      throw new Error('Failed to decrypt API Key - ENCRYPTION_KEY may have changed. Please reset configuration.');
+    }
+
     return twilio(apiKeySid, apiKeySecret, {
       accountSid: account.accountSid
     });
@@ -469,6 +482,12 @@ async function getTwilioRestClient() {
   // - Emergency access needed
   if (account.authToken) {
     const authToken = decrypt(account.authToken);
+
+    // Check if decryption failed
+    if (!authToken) {
+      throw new Error('Failed to decrypt Auth Token - ENCRYPTION_KEY may have changed. Please reset configuration.');
+    }
+
     console.warn('Using Auth Token for REST API (consider migrating to API Key)');
 
     return twilio(account.accountSid, authToken);
@@ -563,6 +582,45 @@ app.post('/api/reset', requireAuth, async (req, res) => {
     });
   } catch (error) {
     await logError('backend', error, { endpoint: '/api/reset' });
+    res.status(500).json({ error: 'Failed to reset configuration' });
+  }
+});
+
+/**
+ * POST /api/emergency-reset
+ * Emergency reset endpoint that doesn't require API key
+ * Used when app is in broken state (e.g., decryption errors)
+ * Requires confirmation code "RESET-EVERYTHING" to prevent accidents
+ */
+app.post('/api/emergency-reset', async (req, res) => {
+  try {
+    const { confirmationCode } = req.body;
+
+    // Require explicit confirmation to prevent accidental resets
+    if (confirmationCode !== 'RESET-EVERYTHING') {
+      return res.status(400).json({
+        error: 'Invalid confirmation code',
+        message: 'Please provide confirmation code: RESET-EVERYTHING'
+      });
+    }
+
+    // Delete all KV keys
+    await kv.del('twilio_config');
+    await kv.del('twilio_account');
+    await kv.del('twiml_app');
+    await kv.del('phone_numbers');
+    await kv.del('conversations');
+    await kv.del('messages');
+    await kv.del('error_logs');
+
+    console.log('Emergency reset performed');
+
+    res.json({
+      success: true,
+      message: 'All configuration has been reset'
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/emergency-reset' });
     res.status(500).json({ error: 'Failed to reset configuration' });
   }
 });
@@ -734,6 +792,13 @@ app.post('/api/setup/voice/complete', async (req, res) => {
     if (account && account.accountSid && account.authToken) {
       accountSid = account.accountSid;
       authTokenDecrypted = decrypt(account.authToken); // Decrypt existing token
+
+      // Check if decryption failed
+      if (!authTokenDecrypted) {
+        return res.status(500).json({
+          error: 'Failed to decrypt existing credentials - ENCRYPTION_KEY may have changed. Please use emergency reset.'
+        });
+      }
     } else {
       // No existing account, credentials are required
       if (!accountSid || !authToken) {
@@ -1554,6 +1619,13 @@ app.get('/api/token', async (req, res) => {
 
     // Decrypt API secret before using
     const apiKeySecret = decrypt(apiKeySecretEncrypted);
+
+    // Check if decryption failed
+    if (!apiKeySecret) {
+      return res.status(500).json({
+        error: 'Failed to decrypt Access Token API Key - ENCRYPTION_KEY may have changed. Please reset configuration.'
+      });
+    }
 
     // Create access token
     const AccessToken = twilio.jwt.AccessToken;

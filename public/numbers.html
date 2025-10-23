@@ -61,6 +61,47 @@
             font-size: 14px;
         }
 
+        .config-info-panel {
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .config-info-panel h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 10px 20px;
+            font-size: 14px;
+        }
+
+        .config-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .config-value {
+            color: #333;
+            word-break: break-all;
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .config-value.empty {
+            color: #999;
+            font-style: italic;
+            font-family: inherit;
+        }
+
         .add-number-section {
             margin-bottom: 30px;
         }
@@ -364,12 +405,13 @@
         </div>
 
         <div id="wizard-banner"></div>
+        <div id="config-info"></div>
         <div id="message-box"></div>
 
         <div class="add-number-section">
-            <button class="add-number-btn" onclick="showAddNumberModal()">+ Add Phone Number</button>
-            <button class="add-number-btn" style="background: #10b981; margin-left: 10px;" onclick="validateAllNumbers()">🔍 Validate All</button>
-            <button class="add-number-btn" style="background: #6b7280; margin-left: 10px;" onclick="refreshFromTwilio()">🔄 Refresh</button>
+            <button class="add-number-btn" id="add-number-btn">+ Add Phone Number</button>
+            <button class="add-number-btn" style="background: #10b981; margin-left: 10px;" id="validate-all-btn">🔍 Validate All</button>
+            <button class="add-number-btn" style="background: #6b7280; margin-left: 10px;" id="refresh-btn">🔄 Refresh</button>
         </div>
 
         <div id="numbers-list" class="numbers-list">
@@ -395,8 +437,8 @@
                 </div>
             </div>
             <div class="modal-buttons">
-                <button class="modal-cancel" onclick="hideAddNumberModal()">Cancel</button>
-                <button class="modal-confirm" id="import-btn" onclick="importNumber()" disabled>Import Number</button>
+                <button class="modal-cancel" id="modal-cancel-btn">Cancel</button>
+                <button class="modal-confirm" id="import-btn" disabled>Import Number</button>
             </div>
         </div>
     </div>
@@ -404,6 +446,69 @@
     <script>
         let selectedNumber = null;
         let phoneNumbers = [];
+
+        /**
+         * HTML escape function to prevent XSS attacks
+         * Escapes <, >, &, ", ' characters
+         */
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        /**
+         * Load and display configuration information
+         * Shows webhook URLs and TwiML app names
+         */
+        async function loadConfigInfo() {
+            const configDiv = document.getElementById('config-info');
+            try {
+                const response = await fetch('/api/config-info');
+                const data = await response.json();
+
+                if (response.ok && data.configured) {
+                    configDiv.innerHTML = `
+                        <div class="config-info-panel">
+                            <h3>Current Configuration</h3>
+                            <div class="config-grid">
+                                <div class="config-label">TwiML App Name:</div>
+                                <div class="config-value ${!data.twiml_app_name ? 'empty' : ''}">${escapeHtml(data.twiml_app_name || 'N/A')}</div>
+
+                                <div class="config-label">TwiML App SID:</div>
+                                <div class="config-value ${!data.twiml_app_sid ? 'empty' : ''}">${escapeHtml(data.twiml_app_sid || 'N/A')}</div>
+
+                                <div class="config-label">Voice Webhook:</div>
+                                <div class="config-value ${!data.voice_url ? 'empty' : ''}">${escapeHtml(data.voice_url || 'N/A')}</div>
+
+                                <div class="config-label">Status Callback:</div>
+                                <div class="config-value ${!data.status_callback ? 'empty' : ''}">${escapeHtml(data.status_callback || 'N/A')}</div>
+
+                                <div class="config-label">SMS Webhook:</div>
+                                <div class="config-value ${!data.sms_url ? 'empty' : ''}">${escapeHtml(data.sms_url || 'N/A')}</div>
+
+                                <div class="config-label">SMS Status Callback:</div>
+                                <div class="config-value ${!data.sms_status_callback ? 'empty' : ''}">${escapeHtml(data.sms_status_callback || 'N/A')}</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Don't show anything if not configured
+                    configDiv.innerHTML = '';
+                }
+            } catch (error) {
+                console.error('Failed to load config info:', error);
+                configDiv.innerHTML = '';
+            }
+        }
+
+        // Rate limiting for validation (prevent spam)
+        let lastValidateTime = 0;
+        const VALIDATE_COOLDOWN_MS = 10000; // 10 seconds between validations
 
         // Check for wizard completion query parameter
         const urlParams = new URLSearchParams(window.location.search);
@@ -462,43 +567,78 @@
                 const voiceIssues = getVoiceIssues(number);
                 const smsIssues = getSMSIssues(number);
 
+                // Escape all issues to prevent XSS
                 let issuesHtml = '';
                 if (voiceIssues.length > 0 || smsIssues.length > 0) {
                     issuesHtml = `
                         <div class="validation-issues">
                             <h4>⚠️ Configuration Issues:</h4>
                             <ul>
-                                ${voiceIssues.map(issue => `<li>${issue}</li>`).join('')}
-                                ${smsIssues.map(issue => `<li>${issue}</li>`).join('')}
+                                ${voiceIssues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}
+                                ${smsIssues.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}
                             </ul>
                         </div>
                     `;
                 }
 
+                // Use data attributes instead of inline onclick for security
                 return `
-                    <div class="number-card">
+                    <div class="number-card" data-sid="${escapeHtml(number.sid)}" data-phone="${escapeHtml(number.phone_number)}">
                         <div class="number-card-header">
                             <div class="number-info">
-                                <h3>${number.phone_number}</h3>
-                                ${number.friendly_name ? `<div class="friendly-name">${number.friendly_name}</div>` : ''}
+                                <h3>${escapeHtml(number.phone_number)}</h3>
+                                ${number.friendly_name ? `<div class="friendly-name">${escapeHtml(number.friendly_name)}</div>` : ''}
                             </div>
                             <div class="number-badges">
-                                <span class="status-badge ${voiceStatus.class}">Voice: ${voiceStatus.label}</span>
-                                <span class="status-badge ${smsStatus.class}">SMS: ${smsStatus.label}</span>
+                                <span class="status-badge ${voiceStatus.class}">Voice: ${escapeHtml(voiceStatus.label)}</span>
+                                <span class="status-badge ${smsStatus.class}">SMS: ${escapeHtml(smsStatus.label)}</span>
                             </div>
                         </div>
                         ${issuesHtml}
                         <div class="number-actions">
-                            ${voiceStatus.status === 'not-configured' ? `<button class="btn-small btn-configure" onclick="configureVoice('${number.sid}')">Configure Voice</button>` : ''}
-                            ${voiceStatus.status === 'issues' ? `<button class="btn-small btn-fix" onclick="fixVoice('${number.sid}')">Fix Voice</button>` : ''}
-                            ${smsStatus.status === 'not-configured' ? `<button class="btn-small btn-configure" onclick="configureSMS('${number.sid}')">Configure SMS</button>` : ''}
-                            ${smsStatus.status === 'issues' ? `<button class="btn-small btn-fix" onclick="fixSMS('${number.sid}')">Fix SMS</button>` : ''}
-                            <button class="btn-small btn-validate" onclick="validateNumber('${number.sid}')">Validate</button>
-                            <button class="btn-small btn-delete" onclick="deleteNumber('${number.sid}', '${number.phone_number}')">Delete</button>
+                            ${voiceStatus.status === 'not-configured' ? `<button class="btn-small btn-configure" data-action="configure-voice">Configure Voice</button>` : ''}
+                            ${voiceStatus.status === 'issues' ? `<button class="btn-small btn-fix" data-action="fix-voice">Fix Voice</button>` : ''}
+                            ${smsStatus.status === 'not-configured' ? `<button class="btn-small btn-configure" data-action="configure-sms">Configure SMS</button>` : ''}
+                            ${smsStatus.status === 'issues' ? `<button class="btn-small btn-fix" data-action="fix-sms">Fix SMS</button>` : ''}
+                            <button class="btn-small btn-validate" data-action="validate">Validate</button>
+                            <button class="btn-small btn-delete" data-action="delete">Delete</button>
                         </div>
                     </div>
                 `;
             }).join('');
+
+            // Add event delegation for number card buttons
+            listDiv.querySelectorAll('.number-card').forEach(card => {
+                const sid = card.getAttribute('data-sid');
+                const phoneNumber = card.getAttribute('data-phone');
+
+                card.querySelectorAll('button[data-action]').forEach(btn => {
+                    btn.addEventListener('click', async function() {
+                        const action = this.getAttribute('data-action');
+
+                        switch(action) {
+                            case 'configure-voice':
+                                await configureVoice(sid);
+                                break;
+                            case 'fix-voice':
+                                await fixVoice(sid);
+                                break;
+                            case 'configure-sms':
+                                await configureSMS(sid);
+                                break;
+                            case 'fix-sms':
+                                await fixSMS(sid);
+                                break;
+                            case 'validate':
+                                await validateNumber(sid);
+                                break;
+                            case 'delete':
+                                await deleteNumber(sid, phoneNumber);
+                                break;
+                        }
+                    });
+                });
+            });
         }
 
         function getVoiceStatus(number) {
@@ -564,28 +704,49 @@
                 const data = await response.json();
 
                 if (response.ok && data.numbers && data.numbers.length > 0) {
+                    // Escape all user content and use data attributes instead of inline onclick
                     listDiv.innerHTML = data.numbers.map(number => `
-                        <div class="phone-number-option" onclick="selectNumber('${number.sid}', '${number.phoneNumber}', '${number.friendlyName || ''}')">
+                        <div class="phone-number-option"
+                             data-sid="${escapeHtml(number.sid)}"
+                             data-phone="${escapeHtml(number.phoneNumber)}"
+                             data-friendly="${escapeHtml(number.friendlyName || '')}">
                             <label style="cursor: pointer; display: block;">
-                                <input type="radio" name="phone-number" value="${number.sid}">
-                                <strong>${number.phoneNumber}</strong>
-                                ${number.friendlyName ? `<br><small style="color: #666;">${number.friendlyName}</small>` : ''}
+                                <input type="radio" name="phone-number" value="${escapeHtml(number.sid)}">
+                                <strong>${escapeHtml(number.phoneNumber)}</strong>
+                                ${number.friendlyName ? `<br><small style="color: #666;">${escapeHtml(number.friendlyName)}</small>` : ''}
                                 <br><small style="color: #999;">Voice: ${number.capabilities.voice ? '✓' : '✗'} | SMS: ${number.capabilities.SMS ? '✓' : '✗'} | MMS: ${number.capabilities.MMS ? '✓' : '✗'}</small>
                             </label>
                         </div>
                     `).join('');
+
+                    // Add event listeners to phone number options
+                    listDiv.querySelectorAll('.phone-number-option').forEach(option => {
+                        option.addEventListener('click', function() {
+                            const sid = this.getAttribute('data-sid');
+                            const phoneNumber = this.getAttribute('data-phone');
+                            const friendlyName = this.getAttribute('data-friendly');
+                            selectNumber(sid, phoneNumber, friendlyName);
+                        });
+                    });
                 } else {
                     modalMessage.innerHTML = '<div class="message-box message-error">No phone numbers found in your Twilio account.</div>';
                     listDiv.innerHTML = '';
                 }
             } catch (error) {
-                modalMessage.innerHTML = `<div class="message-box message-error">Failed to load numbers: ${error.message}</div>`;
+                modalMessage.innerHTML = `<div class="message-box message-error">Failed to load numbers: ${escapeHtml(error.message)}</div>`;
             }
         }
 
         function selectNumber(sid, phoneNumber, friendlyName) {
             document.querySelectorAll('.phone-number-option').forEach(el => el.classList.remove('selected'));
-            event.currentTarget.classList.add('selected');
+
+            // Find and mark the option as selected
+            const options = document.querySelectorAll('.phone-number-option');
+            options.forEach(opt => {
+                if (opt.getAttribute('data-sid') === sid) {
+                    opt.classList.add('selected');
+                }
+            });
 
             selectedNumber = { sid, phoneNumber, friendlyName };
             document.getElementById('import-btn').disabled = false;
@@ -641,6 +802,19 @@
         }
 
         async function validateAllNumbers() {
+            // Rate limiting to prevent spam
+            const now = Date.now();
+            if (now - lastValidateTime < VALIDATE_COOLDOWN_MS) {
+                const waitSeconds = Math.ceil((VALIDATE_COOLDOWN_MS - (now - lastValidateTime)) / 1000);
+                document.getElementById('message-box').innerHTML =
+                    `<div class="message-box message-error">Please wait ${waitSeconds} seconds before validating again</div>`;
+                setTimeout(() => {
+                    document.getElementById('message-box').innerHTML = '';
+                }, 2000);
+                return;
+            }
+            lastValidateTime = now;
+
             await performAction('/api/numbers/validate-all', 'Validating all numbers...');
         }
 
@@ -698,8 +872,21 @@
             }, 1000);
         }
 
-        // Load phone numbers on page load
+        // Initialize page and add event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Add event listeners for main buttons
+            document.getElementById('add-number-btn').addEventListener('click', showAddNumberModal);
+            document.getElementById('validate-all-btn').addEventListener('click', validateAllNumbers);
+            document.getElementById('refresh-btn').addEventListener('click', refreshFromTwilio);
+
+            // Add event listeners for modal buttons
+            document.getElementById('modal-cancel-btn').addEventListener('click', hideAddNumberModal);
+            document.getElementById('import-btn').addEventListener('click', importNumber);
+        });
+
+        // Load phone numbers and config info on page load
         loadPhoneNumbers().then(() => {
+            loadConfigInfo();
             autoValidateNumbers();
         });
     </script>

@@ -384,7 +384,7 @@
                 </div>
             </div>
 
-            <button class="new-conversation-btn" onclick="showNewConversationModal()">+ New Message</button>
+            <button class="new-conversation-btn" id="new-conversation-btn">+ New Message</button>
 
             <div class="conversations-list" id="conversations-list">
                 <div class="loading">
@@ -408,8 +408,8 @@
             <h2>New Message</h2>
             <input type="tel" id="new-phone-number" placeholder="Enter phone number (e.g., +1234567890)">
             <div class="modal-buttons">
-                <button class="modal-cancel" onclick="hideNewConversationModal()">Cancel</button>
-                <button class="modal-confirm" onclick="startNewConversation()">Start Chat</button>
+                <button class="modal-cancel" id="modal-cancel-btn">Cancel</button>
+                <button class="modal-confirm" id="modal-confirm-btn">Start Chat</button>
             </div>
         </div>
     </div>
@@ -419,6 +419,38 @@
         let currentConversation = null;
         let messages = [];
         let autoRefreshInterval = null;
+
+        /**
+         * HTML escape function to prevent XSS attacks
+         * Escapes <, >, &, ", ' characters
+         */
+        function escapeHtml(unsafe) {
+            if (unsafe === null || unsafe === undefined) return '';
+            return String(unsafe)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        /**
+         * Validates and sanitizes URLs for media content
+         * Only allows https URLs from trusted domains
+         */
+        function sanitizeMediaUrl(url) {
+            if (!url) return '';
+            try {
+                const urlObj = new URL(url);
+                // Only allow HTTPS URLs from api.twilio.com (Twilio's media storage)
+                if (urlObj.protocol === 'https:' && urlObj.hostname.endsWith('.twilio.com')) {
+                    return url;
+                }
+                return ''; // Invalid URL
+            } catch (e) {
+                return ''; // Invalid URL format
+            }
+        }
 
         async function loadConversations() {
             try {
@@ -442,19 +474,28 @@
                 return;
             }
 
+            // Use data attributes instead of inline onclick for security
             listDiv.innerHTML = conversations.map(conv => `
                 <div class="conversation-item ${currentConversation === conv.phone_number ? 'active' : ''}"
-                     onclick="selectConversation('${conv.phone_number}')">
+                     data-phone-number="${escapeHtml(conv.phone_number)}">
                     <div class="conversation-header">
                         <div class="conversation-phone">
-                            ${conv.phone_number}
-                            ${conv.unread_count > 0 ? `<span class="unread-badge">${conv.unread_count}</span>` : ''}
+                            ${escapeHtml(conv.phone_number)}
+                            ${conv.unread_count > 0 ? `<span class="unread-badge">${escapeHtml(conv.unread_count)}</span>` : ''}
                         </div>
                         <div class="conversation-time">${formatTime(conv.last_message_time)}</div>
                     </div>
-                    <div class="conversation-preview">${conv.last_message}</div>
+                    <div class="conversation-preview">${escapeHtml(conv.last_message)}</div>
                 </div>
             `).join('');
+
+            // Add event listeners to conversation items (instead of inline onclick)
+            listDiv.querySelectorAll('.conversation-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const phoneNumber = this.getAttribute('data-phone-number');
+                    selectConversation(phoneNumber);
+                });
+            });
         }
 
         function formatTime(timestamp) {
@@ -501,11 +542,12 @@
         function renderMessageThread(phoneNumber) {
             const viewDiv = document.getElementById('message-view');
 
+            // Escape phone number to prevent XSS
             viewDiv.innerHTML = `
                 <div class="message-header">
-                    <h2>${phoneNumber}</h2>
+                    <h2>${escapeHtml(phoneNumber)}</h2>
                     <div class="message-actions">
-                        <button class="btn-delete" onclick="deleteConversation('${phoneNumber}')">Delete Conversation</button>
+                        <button class="btn-delete" id="delete-conversation-btn">Delete Conversation</button>
                     </div>
                 </div>
                 <div class="messages-thread" id="messages-thread"></div>
@@ -515,9 +557,8 @@
                             class="compose-input"
                             id="message-input"
                             placeholder="Type a message..."
-                            rows="1"
-                            onkeypress="handleKeyPress(event)"></textarea>
-                        <button class="btn-send" onclick="sendMessage()">Send</button>
+                            rows="1"></textarea>
+                        <button class="btn-send" id="send-message-btn">Send</button>
                     </div>
                     <div class="char-counter" id="char-counter">0 characters</div>
                 </div>
@@ -525,12 +566,29 @@
 
             renderMessages();
 
+            // Add event listeners (instead of inline onclick)
+            document.getElementById('delete-conversation-btn').addEventListener('click', () => {
+                deleteConversation(phoneNumber);
+            });
+
+            document.getElementById('send-message-btn').addEventListener('click', () => {
+                sendMessage();
+            });
+
             // Auto-resize textarea
             const textarea = document.getElementById('message-input');
             textarea.addEventListener('input', function() {
                 this.style.height = 'auto';
                 this.style.height = (this.scrollHeight) + 'px';
                 document.getElementById('char-counter').textContent = `${this.value.length} characters`;
+            });
+
+            // Handle Enter key to send
+            textarea.addEventListener('keypress', function(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage();
+                }
             });
         }
 
@@ -544,20 +602,28 @@
             );
 
             threadDiv.innerHTML = sortedMessages.map(msg => {
+                // Sanitize and validate media URLs (only allow Twilio CDN)
                 const mediaHtml = msg.media && msg.media.length > 0
                     ? `<div class="message-media">
-                        ${msg.media.map(m => `<img src="${m.url}" alt="Image">`).join('')}
+                        ${msg.media.map(m => {
+                            const sanitizedUrl = sanitizeMediaUrl(m.url);
+                            return sanitizedUrl ? `<img src="${escapeHtml(sanitizedUrl)}" alt="Image">` : '';
+                        }).join('')}
                        </div>`
                     : '';
+
+                // CRITICAL: Escape message body to prevent XSS attacks
+                // SMS messages can contain malicious HTML/JavaScript
+                const escapedBody = escapeHtml(msg.body);
 
                 return `
                     <div class="message-bubble ${msg.direction}">
                         <div class="bubble-content">
-                            ${msg.body}
+                            ${escapedBody}
                             ${mediaHtml}
                         </div>
                         <div class="message-meta">
-                            ${formatTime(msg.timestamp)} • ${msg.status || 'sent'}
+                            ${formatTime(msg.timestamp)} • ${escapeHtml(msg.status || 'sent')}
                         </div>
                     </div>
                 `;
@@ -569,14 +635,18 @@
             }, 100);
         }
 
-        function handleKeyPress(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-            }
-        }
+        // Rate limiting for send message (prevent spam)
+        let lastSendTime = 0;
+        const SEND_COOLDOWN_MS = 1000; // 1 second between sends
 
         async function sendMessage() {
+            // Rate limiting
+            const now = Date.now();
+            if (now - lastSendTime < SEND_COOLDOWN_MS) {
+                return; // Silently ignore if too soon
+            }
+            lastSendTime = now;
+
             if (!currentConversation) return;
 
             const input = document.getElementById('message-input');
@@ -658,6 +728,23 @@
                 }
             }, 5000);
         }
+
+        // Initialize page and add event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            // Add event listener for new conversation button
+            document.getElementById('new-conversation-btn').addEventListener('click', showNewConversationModal);
+
+            // Add event listeners for modal buttons
+            document.getElementById('modal-cancel-btn').addEventListener('click', hideNewConversationModal);
+            document.getElementById('modal-confirm-btn').addEventListener('click', startNewConversation);
+
+            // Allow Enter key in modal to start conversation
+            document.getElementById('new-phone-number').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    startNewConversation();
+                }
+            });
+        });
 
         // Load conversations on page load
         loadConversations().then(() => {

@@ -50,6 +50,46 @@ const CONFIG = {
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+/**
+ * Content Security Policy (CSP) Middleware
+ * Prevents XSS attacks by controlling which resources can be loaded
+ * Applied to all HTML responses
+ */
+app.use((req, res, next) => {
+  // Only apply CSP to HTML responses (not API endpoints)
+  const originalSend = res.send;
+  res.send = function(data) {
+    // Check if this is an HTML response
+    const contentType = res.get('Content-Type');
+    if (contentType && contentType.includes('text/html')) {
+      // Set Content Security Policy headers
+      res.setHeader('Content-Security-Policy', [
+        "default-src 'self'",  // Only allow resources from same origin
+        "script-src 'self' 'unsafe-inline' https://sdk.twilio.com https://media.twiliocdn.com", // Allow Twilio SDK
+        "style-src 'self' 'unsafe-inline'",  // Allow inline styles (used in our app)
+        "connect-src 'self' https://api.twilio.com https://*.twilio.com wss://*.twilio.com", // Allow Twilio API calls
+        "media-src 'self' https://*.twilio.com blob:", // Allow Twilio media (MMS images, call audio)
+        "img-src 'self' https://*.twilio.com data:", // Allow images from Twilio CDN
+        "font-src 'self' data:", // Allow local fonts
+        "object-src 'none'", // No Flash, Java applets, etc.
+        "base-uri 'self'", // Prevent base tag injection
+        "form-action 'self'", // Forms can only submit to same origin
+        "frame-ancestors 'none'" // Prevent clickjacking
+      ].join('; '));
+
+      // Additional security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff'); // Prevent MIME sniffing
+      res.setHeader('X-Frame-Options', 'DENY'); // Prevent clickjacking
+      res.setHeader('X-XSS-Protection', '1; mode=block'); // Enable XSS filter (legacy browsers)
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin'); // Control referrer info
+    }
+
+    return originalSend.call(this, data);
+  };
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // ============================================================================
@@ -577,6 +617,47 @@ app.get('/api/status', async (req, res) => {
       voice_setup_completed: false,
       sms_setup_completed: false
     });
+  }
+});
+
+/**
+ * GET /api/config-info
+ * Returns webhook URLs and TwiML app information
+ * Used for displaying current configuration in the UI
+ */
+app.get('/api/config-info', async (req, res) => {
+  try {
+    const twimlApp = await kv.get('twiml_app');
+    const account = await kv.get('twilio_account');
+
+    if (!twimlApp) {
+      return res.json({ configured: false });
+    }
+
+    // Fetch TwiML app name from Twilio
+    let twimlAppName = 'Unknown';
+    if (account && twimlApp.sid) {
+      try {
+        const client = await getTwilioRestClient();
+        const twilioApp = await client.applications(twimlApp.sid).fetch();
+        twimlAppName = twilioApp.friendlyName;
+      } catch (error) {
+        console.error('Failed to fetch TwiML app name:', error);
+      }
+    }
+
+    res.json({
+      configured: true,
+      twiml_app_name: twimlAppName,
+      twiml_app_sid: twimlApp.sid,
+      voice_url: twimlApp.voice_url || null,
+      status_callback: twimlApp.status_callback || null,
+      sms_url: twimlApp.app_url ? `${twimlApp.app_url}/sms` : null,
+      sms_status_callback: twimlApp.app_url ? `${twimlApp.app_url}/sms-status` : null
+    });
+  } catch (error) {
+    await logError('backend', error, { endpoint: '/api/config-info' });
+    res.status(500).json({ error: error.message });
   }
 });
 

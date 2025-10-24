@@ -67,7 +67,7 @@ app.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Health check endpoint
+// Health check endpoint (used for monitoring and uptime checks)
 app.get('/health', (c) => {
   return c.json({
     status: 'ok',

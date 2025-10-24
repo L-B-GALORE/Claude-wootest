@@ -9,19 +9,13 @@
 name = "customer-service-platform-api"
 main = "src/index.js"
 compatibility_date = "2024-10-01"
+account_id = "f09bbb81e8be554d6e67b5de063d8925"
 
 # Worker configuration
 workers_dev = true
-route = ""
 
 # KV Namespaces (for caching, presence, sessions)
-[[kv_namespaces]]
-binding = "PRESENCE_KV"
-id = "" # Will be filled after creation
-
-[[kv_namespaces]]
-binding = "CACHE_KV"
-id = "" # Will be filled after creation
+# Will be added after creation
 
 # R2 Buckets (for call recordings, attachments, media)
 [[r2_buckets]]

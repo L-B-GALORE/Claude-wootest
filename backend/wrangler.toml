@@ -15,7 +15,13 @@ account_id = "f09bbb81e8be554d6e67b5de063d8925"
 workers_dev = true
 
 # KV Namespaces (for caching, presence, sessions)
-# Will be added after creation
+[[kv_namespaces]]
+binding = "PRESENCE_KV"
+id = "c0d205f35d3745b68b452282773ef17e"
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "1f5c5cc1d566466f8a9cabacdfd08f58"
 
 # R2 Buckets (for call recordings, attachments, media)
 [[r2_buckets]]

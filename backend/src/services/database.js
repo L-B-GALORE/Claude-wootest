@@ -28,9 +28,9 @@
  * For now, this is a placeholder that shows the structure
  */
 
-// import { PrismaClient } from '@prisma/client';
-// import { PrismaPg } from '@prisma/adapter-pg';
-// import pg from 'pg';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import pg from 'pg';
 
 /**
  * Get Prisma client for the current request
@@ -44,8 +44,6 @@
  * @returns {PrismaClient} - Prisma client instance
  */
 export function getPrismaClient(env) {
-  // TODO: Uncomment when Prisma is fully set up
-  /*
   const databaseUrl = env.DATABASE_URL;
 
   if (!databaseUrl) {
@@ -64,11 +62,6 @@ export function getPrismaClient(env) {
   const prisma = new PrismaClient({ adapter });
 
   return prisma;
-  */
-
-  // Placeholder return (remove when uncommenting above)
-  console.warn('Prisma client not yet configured - using mock');
-  return createMockPrismaClient();
 }
 
 /**

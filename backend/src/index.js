@@ -34,8 +34,8 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
 
-// Import API routes (will be created)
-// import authRoutes from './api/auth';
+// Import API routes
+import authRoutes from './api/auth/index.js';
 // import userRoutes from './api/users';
 // import providerRoutes from './api/providers';
 // import channelRoutes from './api/channels';
@@ -44,9 +44,9 @@ import { prettyJSON } from 'hono/pretty-json';
 // import messageRoutes from './api/messages';
 // import voiceRoutes from './api/voice';
 
-// Import middleware (will be created)
-// import { authMiddleware } from './middleware/auth';
-// import { errorHandler } from './middleware/error-handler';
+// Import middleware
+import { authMiddleware } from './middleware/auth.js';
+import { errorHandler } from './middleware/error-handler.js';
 
 // Import Durable Objects
 import { CompanyRoom } from './durable-objects/CompanyRoom';
@@ -80,10 +80,11 @@ app.get('/health', (c) => {
 // API v1 routes
 const api = new Hono();
 
-// Authentication routes (public)
-api.get('/auth/test', (c) => {
-  return c.json({ message: 'Auth endpoint working' });
-});
+// Authentication routes (public - no auth middleware required)
+api.route('/auth', authRoutes);
+
+// Protected routes (require authentication)
+// TODO: Add protected route groups here with authMiddleware
 
 // Mount API routes
 app.route('/api/v1', api);

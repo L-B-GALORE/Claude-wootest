@@ -1,0 +1,50 @@
+# Cloudflare Workers Configuration
+#
+# This file defines the configuration for the Cloudflare Workers backend.
+# It includes bindings for KV (cache), R2 (storage), Durable Objects (WebSockets),
+# and environment variables.
+#
+# Documentation: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "customer-service-platform-api"
+main = "src/index.js"
+compatibility_date = "2024-10-01"
+
+# Worker configuration
+workers_dev = true
+route = ""
+
+# KV Namespaces (for caching, presence, sessions)
+[[kv_namespaces]]
+binding = "PRESENCE_KV"
+id = "" # Will be filled after creation
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "" # Will be filled after creation
+
+# R2 Buckets (for call recordings, attachments, media)
+[[r2_buckets]]
+binding = "MEDIA_STORAGE"
+bucket_name = "customer-service-media"
+
+# Durable Objects (for WebSocket connections per company)
+[[durable_objects.bindings]]
+name = "COMPANY_ROOM"
+class_name = "CompanyRoom"
+script_name = "customer-service-platform-api"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CompanyRoom"]
+
+# Environment variables (non-sensitive, for development)
+[vars]
+ENVIRONMENT = "development"
+
+# Secrets (sensitive data, set via: wrangler secret put SECRET_NAME)
+# - DATABASE_URL (Neon Postgres connection string)
+# - JWT_SECRET (for signing JWT tokens)
+# - ENCRYPTION_KEY (for encrypting provider credentials)
+# - TWILIO_ACCOUNT_SID (optional, for demo/testing)
+# - TWILIO_AUTH_TOKEN (optional, for demo/testing)

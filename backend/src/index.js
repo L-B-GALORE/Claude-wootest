@@ -70,7 +70,7 @@ app.use('*', cors({
 // Health check endpoint (used for monitoring and uptime checks)
 app.get('/health', (c) => {
   return c.json({
-    status: 'ok',
+    status: 'healthy',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
     environment: c.env.ENVIRONMENT || 'production',

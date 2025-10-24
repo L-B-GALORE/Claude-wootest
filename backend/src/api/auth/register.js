@@ -53,7 +53,7 @@ import { logger } from '../../utils/logger.js';
 
 const app = new Hono();
 
-app.post('/register', asyncHandler(async (c) => {
+app.post('/', asyncHandler(async (c) => {
   const body = await c.req.json();
   const { companyName, name, email, password } = body;
 

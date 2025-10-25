@@ -64,7 +64,7 @@ app.post('/', asyncHandler(async (c) => {
   }
 
   // Get database client
-  const db = getPrisma(c.env);
+  const db = getPrisma(c.env.DATABASE_URL);
 
   // Find user by email (include company data)
   const user = await db.user.findFirst({

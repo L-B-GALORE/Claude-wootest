@@ -88,7 +88,7 @@ app.post('/', asyncHandler(async (c) => {
   }
 
   // Get database client
-  const db = getPrisma(c.env);
+  const db = getPrisma(c.env.DATABASE_URL);
 
   // Check if email already exists
   const existingUser = await db.user.findFirst({

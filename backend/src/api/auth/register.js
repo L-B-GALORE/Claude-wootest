@@ -45,7 +45,7 @@
  */
 
 import { Hono } from 'hono';
-import { getPrismaClient } from '../../services/database.js';
+import { getPrisma } from '../../lib/prisma.js';
 import { hashPassword, validatePasswordStrength } from '../../utils/password.js';
 import { generateAccessToken, generateRefreshToken } from '../../utils/jwt.js';
 import { APIError, asyncHandler } from '../../middleware/error-handler.js';
@@ -88,7 +88,7 @@ app.post('/', asyncHandler(async (c) => {
   }
 
   // Get database client
-  const db = getPrismaClient(c.env);
+  const db = getPrisma(c.env);
 
   // Check if email already exists
   const existingUser = await db.user.findFirst({

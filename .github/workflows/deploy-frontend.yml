@@ -52,12 +52,20 @@ jobs:
           VITE_API_URL: https://customer-service-platform-api.f09bbb81e8be554d6e67b5de063d8925.workers.dev
           VITE_WS_URL: wss://customer-service-platform-api.f09bbb81e8be554d6e67b5de063d8925.workers.dev/ws
 
+      - name: Create Pages project if not exists
+        continue-on-error: true
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/accounts/f09bbb81e8be554d6e67b5de063d8925/pages/projects" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"name":"customer-service-platform","production_branch":"main"}'
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: f09bbb81e8be554d6e67b5de063d8925
-          command: pages deploy frontend/dist --project-name=customer-service-platform
+          command: pages deploy frontend/dist --project-name=customer-service-platform --branch=main
 
       - name: Deployment Summary
         run: |

@@ -9,10 +9,12 @@
  * - Nested route outlet
  */
 
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Settings, Inbox, Phone, Building2, Users, User } from 'lucide-react';
 
 function SettingsLayout() {
+  const location = useLocation();
+
   const navItems = [
     { path: '/settings/providers', label: 'Providers', icon: Settings },
     { path: '/settings/channels', label: 'Channels', icon: Phone },
@@ -61,7 +63,7 @@ function SettingsLayout() {
           {/* Content Area */}
           <div className="flex-1">
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-              <Outlet />
+              <Outlet key={location.pathname} />
             </div>
           </div>
         </div>

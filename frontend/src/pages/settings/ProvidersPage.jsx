@@ -18,32 +18,21 @@ function ProvidersPageContent() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
 
-  console.log('[ProvidersPage] Component rendered', { providersCount: providers.length, loading });
-
   useEffect(() => {
-    console.log('[ProvidersPage] useEffect FIRED - calling fetchProviders');
     fetchProviders();
-
-    return () => {
-      console.log('[ProvidersPage] Component UNMOUNTING');
-    };
   }, []);
 
   const fetchProviders = async () => {
-    console.log('[ProvidersPage] fetchProviders STARTED');
     setLoading(true);
     try {
       const response = await api.get('/api/v1/providers');
-      console.log('[ProvidersPage] API response received:', response.data);
       if (response.data.success) {
         setProviders(response.data.data.providers);
-        console.log('[ProvidersPage] Providers state SET:', response.data.data.providers);
       }
     } catch (error) {
-      console.error('[ProvidersPage] Failed to fetch providers:', error);
+      console.error('Failed to fetch providers:', error);
     } finally {
       setLoading(false);
-      console.log('[ProvidersPage] fetchProviders COMPLETED');
     }
   };
 

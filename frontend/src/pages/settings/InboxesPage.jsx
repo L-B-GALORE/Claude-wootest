@@ -21,32 +21,21 @@ function InboxesPageContent() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  console.log('[InboxesPage] Component rendered', { inboxesCount: inboxes.length, loading });
-
   useEffect(() => {
-    console.log('[InboxesPage] useEffect FIRED - calling fetchInboxes');
     fetchInboxes();
-
-    return () => {
-      console.log('[InboxesPage] Component UNMOUNTING');
-    };
   }, []);
 
   const fetchInboxes = async () => {
-    console.log('[InboxesPage] fetchInboxes STARTED');
     setLoading(true);
     try {
       const response = await api.get('/api/v1/inboxes');
-      console.log('[InboxesPage] API response received:', response.data);
       if (response.data.success) {
         setInboxes(response.data.data.inboxes);
-        console.log('[InboxesPage] Inboxes state SET:', response.data.data.inboxes);
       }
     } catch (error) {
-      console.error('[InboxesPage] Failed to fetch inboxes:', error);
+      console.error('Failed to fetch inboxes:', error);
     } finally {
       setLoading(false);
-      console.log('[InboxesPage] fetchInboxes COMPLETED');
     }
   };
 

@@ -36,9 +36,8 @@ import { prettyJSON } from 'hono/pretty-json';
 
 // Import API routes
 import authRoutes from './api/auth/index.js';
-// import userRoutes from './api/users';
-// import providerRoutes from './api/providers';
-// import channelRoutes from './api/channels';
+import providerRoutes from './api/providers/index.js';
+import channelRoutes from './api/channels/index.js';
 // import inboxRoutes from './api/inboxes';
 // import conversationRoutes from './api/conversations';
 // import messageRoutes from './api/messages';
@@ -84,7 +83,11 @@ const api = new Hono();
 api.route('/auth', authRoutes);
 
 // Protected routes (require authentication)
-// TODO: Add protected route groups here with authMiddleware
+api.use('/providers/*', authMiddleware);
+api.route('/providers', providerRoutes);
+
+api.use('/channels/*', authMiddleware);
+api.route('/channels', channelRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

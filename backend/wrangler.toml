@@ -9,6 +9,7 @@
 name = "customer-service-platform-api"
 main = "src/index.js"
 compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
 account_id = "f09bbb81e8be554d6e67b5de063d8925"
 
 # Worker configuration

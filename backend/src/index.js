@@ -105,11 +105,18 @@ app.notFound((c) => {
 app.onError((err, c) => {
   console.error('Unhandled error:', err);
 
+  // In development, return detailed error info
+  const isDev = c.env?.ENVIRONMENT === 'development';
+
   return c.json({
     success: false,
     error: {
       code: 'INTERNAL_SERVER_ERROR',
       message: err.message || 'An unexpected error occurred',
+      ...(isDev && {
+        stack: err.stack,
+        details: err.toString(),
+      }),
     },
   }, 500);
 });

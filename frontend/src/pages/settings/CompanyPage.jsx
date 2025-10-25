@@ -5,8 +5,9 @@
  */
 
 import { useAuth } from '../../context/AuthContext';
+import SettingsLayout from './SettingsLayout';
 
-function CompanyPage() {
+function CompanyPageContent() {
   const { company } = useAuth();
 
   return (
@@ -30,6 +31,14 @@ function CompanyPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+function CompanyPage() {
+  return (
+    <SettingsLayout>
+      <CompanyPageContent />
+    </SettingsLayout>
   );
 }
 

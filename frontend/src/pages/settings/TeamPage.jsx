@@ -4,7 +4,9 @@
  * Purpose: Manage team members and invitations
  */
 
-function TeamPage() {
+import SettingsLayout from './SettingsLayout';
+
+function TeamPageContent() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -29,6 +31,14 @@ function TeamPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TeamPage() {
+  return (
+    <SettingsLayout>
+      <TeamPageContent />
+    </SettingsLayout>
   );
 }
 

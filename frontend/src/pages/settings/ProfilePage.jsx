@@ -5,8 +5,9 @@
  */
 
 import { useAuth } from '../../context/AuthContext';
+import SettingsLayout from './SettingsLayout';
 
-function ProfilePage() {
+function ProfilePageContent() {
   const { user } = useAuth();
 
   return (
@@ -58,6 +59,14 @@ function ProfilePage() {
         Profile editing coming soon
       </p>
     </div>
+  );
+}
+
+function ProfilePage() {
+  return (
+    <SettingsLayout>
+      <ProfilePageContent />
+    </SettingsLayout>
   );
 }
 

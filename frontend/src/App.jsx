@@ -33,6 +33,9 @@ import ConversationsPage from './pages/conversations/ConversationsPage';
 import ProvidersPage from './pages/settings/ProvidersPage';
 import ChannelsPage from './pages/settings/ChannelsPage';
 import InboxesPage from './pages/settings/InboxesPage';
+import ProfilePage from './pages/settings/ProfilePage';
+import TeamPage from './pages/settings/TeamPage';
+import CompanyPage from './pages/settings/CompanyPage';
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
@@ -74,11 +77,14 @@ function App() {
         <Route path="/conversations" element={<ConversationsPage />} />
       </Route>
 
-      {/* Settings routes - each is independent */}
+      {/* Settings routes - each is independent with unique keys to force remounting */}
       <Route path="/settings" element={<Navigate to="/settings/providers" replace />} />
-      <Route path="/settings/providers" element={<ProtectedRoute><ProvidersPage /></ProtectedRoute>} />
-      <Route path="/settings/channels" element={<ProtectedRoute><ChannelsPage /></ProtectedRoute>} />
-      <Route path="/settings/inboxes" element={<ProtectedRoute><InboxesPage /></ProtectedRoute>} />
+      <Route path="/settings/providers" element={<ProtectedRoute key="providers"><ProvidersPage key="providers-page" /></ProtectedRoute>} />
+      <Route path="/settings/channels" element={<ProtectedRoute key="channels"><ChannelsPage key="channels-page" /></ProtectedRoute>} />
+      <Route path="/settings/inboxes" element={<ProtectedRoute key="inboxes"><InboxesPage key="inboxes-page" /></ProtectedRoute>} />
+      <Route path="/settings/company" element={<ProtectedRoute key="company"><CompanyPage key="company-page" /></ProtectedRoute>} />
+      <Route path="/settings/team" element={<ProtectedRoute key="team"><TeamPage key="team-page" /></ProtectedRoute>} />
+      <Route path="/settings/profile" element={<ProtectedRoute key="profile"><ProfilePage key="profile-page" /></ProtectedRoute>} />
 
       {/* Redirect root to dashboard or login */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

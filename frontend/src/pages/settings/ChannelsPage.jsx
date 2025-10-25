@@ -19,21 +19,32 @@ function ChannelsPageContent() {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  console.log('[ChannelsPage] Component rendered', { channelsCount: channels.length, loading });
+
   useEffect(() => {
+    console.log('[ChannelsPage] useEffect FIRED - calling fetchChannels');
     fetchChannels();
+
+    return () => {
+      console.log('[ChannelsPage] Component UNMOUNTING');
+    };
   }, []);
 
   const fetchChannels = async () => {
+    console.log('[ChannelsPage] fetchChannels STARTED');
     setLoading(true);
     try {
       const response = await api.get('/api/v1/channels');
+      console.log('[ChannelsPage] API response received:', response.data);
       if (response.data.success) {
         setChannels(response.data.data.channels);
+        console.log('[ChannelsPage] Channels state SET:', response.data.data.channels);
       }
     } catch (error) {
-      console.error('Failed to fetch channels:', error);
+      console.error('[ChannelsPage] Failed to fetch channels:', error);
     } finally {
       setLoading(false);
+      console.log('[ChannelsPage] fetchChannels COMPLETED');
     }
   };
 

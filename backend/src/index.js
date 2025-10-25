@@ -108,6 +108,18 @@ app.notFound((c) => {
 app.onError((err, c) => {
   console.error('Unhandled error:', err);
 
+  // Handle APIError (from middleware)
+  if (err.name === 'APIError') {
+    return c.json({
+      success: false,
+      error: {
+        code: err.code,
+        message: err.message,
+        ...(err.details && { details: err.details }),
+      },
+    }, err.statusCode || 500);
+  }
+
   // In development, return detailed error info
   const isDev = c.env?.ENVIRONMENT === 'development';
 

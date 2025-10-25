@@ -68,14 +68,13 @@ model User {
   lastActiveAt DateTime? @map("last_active_at")
 
   // Relations
-  company             Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  preferences         UserPreference[]
-  inboxMemberships    InboxMember[]
-  privateChannels     PrivateChannel[]
+  company               Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  preferences           UserPreference[]
+  inboxMemberships      InboxMember[]
   assignedConversations Conversation[]
-  sentMessages        Message[]          @relation("UserSentMessages")
-  answeredCalls       VoiceCall[]
-  activityLogs        ActivityLog[]
+  sentMessages          Message[]      @relation("UserSentMessages")
+  answeredCalls         VoiceCall[]
+  activityLogs          ActivityLog[]
 
   @@unique([companyId, email])
   @@index([companyId])
@@ -142,13 +141,23 @@ model Provider {
 }
 
 enum ChannelType {
-  VOICE
-  SMS
-  EMAIL
-  WHATSAPP
-  FACEBOOK_MESSENGER
+  PHONE              // Voice, SMS, MMS
+  EMAIL              // Email messages
+  WHATSAPP           // WhatsApp messages
+  MESSENGER          // Facebook Messenger
+  INSTAGRAM          // Instagram DMs
 
   @@map("channel_type")
+}
+
+enum RoutingType {
+  UNASSIGNED         // Channel exists but not routing anywhere
+  INBOX              // Routes to an inbox (team)
+  USER               // Routes to a specific user (private line)
+  VOICEMAIL          // Goes directly to voicemail (future)
+  CUSTOM             // Custom routing logic (future)
+
+  @@map("routing_type")
 }
 
 enum ChannelStatus {
@@ -163,24 +172,29 @@ model Channel {
   companyId    String        @map("company_id")
   providerId   String        @map("provider_id")
   type         ChannelType
-  identifier   String        // Phone number, email address, WhatsApp number, etc.
-  capabilities Json          // Array: ["voice", "sms"] or ["email"]
+  identifier   String        // Phone number (E.164), email address, WhatsApp number, etc.
+  capabilities Json          // Array: ["voice", "sms", "mms"] for PHONE or ["email"] for EMAIL
   status       ChannelStatus @default(ACTIVE)
-  metadata     Json?         // Channel-specific config
+  metadata     Json?         // Channel-specific config (Twilio SID, friendly name, etc.)
+
+  // Routing configuration
+  routingType      RoutingType @default(UNASSIGNED) @map("routing_type")
+  routingTargetId  String?     @map("routing_target_id") // inboxId or userId depending on routingType
+
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
   // Relations
-  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  provider         Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  inboxChannels    InboxChannel[]
-  privateChannels  PrivateChannel[]
-  conversations    Conversation[]
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider      Provider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
 
   @@unique([companyId, identifier])
   @@index([companyId])
   @@index([providerId])
   @@index([type])
+  @@index([routingType])
+  @@index([routingTargetId])
   @@map("channels")
 }
 
@@ -198,28 +212,11 @@ model Inbox {
 
   // Relations
   company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  inboxChannels     InboxChannel[]
-  inboxMembers      InboxMember[]
+  members           InboxMember[]
   routingStrategies RoutingStrategy[]
 
   @@index([companyId])
   @@map("inboxes")
-}
-
-model InboxChannel {
-  id        String   @id @default(uuid())
-  inboxId   String   @map("inbox_id")
-  channelId String   @map("channel_id")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // Relations
-  inbox   Inbox   @relation(fields: [inboxId], references: [id], onDelete: Cascade)
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@unique([inboxId, channelId])
-  @@index([inboxId])
-  @@index([channelId])
-  @@map("inbox_channels")
 }
 
 model InboxMember {
@@ -236,23 +233,6 @@ model InboxMember {
   @@index([inboxId])
   @@index([userId])
   @@map("inbox_members")
-}
-
-model PrivateChannel {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  channelId String   @map("channel_id")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  // Relations
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@unique([userId])
-  @@unique([channelId])
-  @@index([userId])
-  @@index([channelId])
-  @@map("private_channels")
 }
 
 // ============================================================================

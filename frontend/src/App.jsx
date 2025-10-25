@@ -22,7 +22,6 @@ import { useAuth } from './context/AuthContext';
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
-import SettingsLayout from './pages/settings/SettingsLayout';
 
 // Pages
 import LoginPage from './pages/auth/LoginPage';
@@ -30,13 +29,10 @@ import RegisterPage from './pages/auth/RegisterPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ConversationsPage from './pages/conversations/ConversationsPage';
 
-// Settings Pages
+// Settings Pages (each has its own layout wrapper)
 import ProvidersPage from './pages/settings/ProvidersPage';
 import ChannelsPage from './pages/settings/ChannelsPage';
 import InboxesPage from './pages/settings/InboxesPage';
-import CompanyPage from './pages/settings/CompanyPage';
-import TeamPage from './pages/settings/TeamPage';
-import ProfilePage from './pages/settings/ProfilePage';
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
@@ -66,7 +62,7 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
       </Route>
 
-      {/* Protected routes */}
+      {/* Protected routes - Dashboard */}
       <Route
         element={
           <ProtectedRoute>
@@ -78,23 +74,11 @@ function App() {
         <Route path="/conversations" element={<ConversationsPage />} />
       </Route>
 
-      {/* Settings routes (nested) */}
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Navigate to="/settings/providers" replace />} />
-        <Route path="providers" element={<ProvidersPage />} />
-        <Route path="channels" element={<ChannelsPage />} />
-        <Route path="inboxes" element={<InboxesPage />} />
-        <Route path="company" element={<CompanyPage />} />
-        <Route path="team" element={<TeamPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-      </Route>
+      {/* Settings routes - each is independent */}
+      <Route path="/settings" element={<Navigate to="/settings/providers" replace />} />
+      <Route path="/settings/providers" element={<ProtectedRoute><ProvidersPage /></ProtectedRoute>} />
+      <Route path="/settings/channels" element={<ProtectedRoute><ChannelsPage /></ProtectedRoute>} />
+      <Route path="/settings/inboxes" element={<ProtectedRoute><InboxesPage /></ProtectedRoute>} />
 
       {/* Redirect root to dashboard or login */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -2,22 +2,16 @@
  * Providers Settings Page
  *
  * Purpose: Manage communication providers (Twilio, Gmail, etc.)
- *
- * Features:
- * - List connected providers
- * - Connect new providers
- * - Import channels from providers
  */
 
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import ConnectTwilioModal from '../../components/modals/ConnectTwilioModal';
 import ImportNumbersModal from '../../components/modals/ImportNumbersModal';
+import SettingsLayout from './SettingsLayout';
 import api from '../../services/api';
 
-function ProvidersPage() {
-  const location = useLocation();
+function ProvidersPageContent() {
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showTwilioModal, setShowTwilioModal] = useState(false);
@@ -26,7 +20,7 @@ function ProvidersPage() {
 
   useEffect(() => {
     fetchProviders();
-  }, [location.pathname]);
+  }, []);
 
   const fetchProviders = async () => {
     setLoading(true);
@@ -153,6 +147,14 @@ function ProvidersPage() {
         onSuccess={handleNumbersImported}
       />
     </div>
+  );
+}
+
+function ProvidersPage() {
+  return (
+    <SettingsLayout>
+      <ProvidersPageContent />
+    </SettingsLayout>
   );
 }
 

@@ -11,18 +11,17 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { Phone, Mail, Edit2 } from 'lucide-react';
+import SettingsLayout from './SettingsLayout';
 import api from '../../services/api';
 
-function ChannelsPage() {
-  const location = useLocation();
+function ChannelsPageContent() {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchChannels();
-  }, [location.pathname]);
+  }, []);
 
   const fetchChannels = async () => {
     setLoading(true);
@@ -173,6 +172,14 @@ function ChannelsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function ChannelsPage() {
+  return (
+    <SettingsLayout>
+      <ChannelsPageContent />
+    </SettingsLayout>
   );
 }
 

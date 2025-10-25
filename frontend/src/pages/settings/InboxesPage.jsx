@@ -11,20 +11,19 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { MessageSquare, Trash2 } from 'lucide-react';
 import CreateInboxModal from '../../components/modals/CreateInboxModal';
+import SettingsLayout from './SettingsLayout';
 import api from '../../services/api';
 
-function InboxesPage() {
-  const location = useLocation();
+function InboxesPageContent() {
   const [inboxes, setInboxes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     fetchInboxes();
-  }, [location.pathname]);
+  }, []);
 
   const fetchInboxes = async () => {
     setLoading(true);
@@ -144,6 +143,14 @@ function InboxesPage() {
         onSuccess={handleInboxCreated}
       />
     </div>
+  );
+}
+
+function InboxesPage() {
+  return (
+    <SettingsLayout>
+      <InboxesPageContent />
+    </SettingsLayout>
   );
 }
 

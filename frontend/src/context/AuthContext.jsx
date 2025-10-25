@@ -75,9 +75,22 @@ export function AuthProvider({ children }) {
 
       return { success: true };
     } catch (error) {
+      console.error('Login error:', error);
+
+      // Handle different error types
+      let errorMessage = 'Login failed';
+
+      if (error.code === 'ERR_CANCELED') {
+        errorMessage = 'Request was cancelled. Please try again.';
+      } else if (error.response?.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       return {
         success: false,
-        error: error.response?.data?.error?.message || 'Login failed',
+        error: errorMessage,
       };
     }
   };
@@ -101,9 +114,22 @@ export function AuthProvider({ children }) {
 
       return { success: true };
     } catch (error) {
+      console.error('Registration error:', error);
+
+      // Handle different error types
+      let errorMessage = 'Registration failed';
+
+      if (error.code === 'ERR_CANCELED') {
+        errorMessage = 'Request was cancelled. Please try again.';
+      } else if (error.response?.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       return {
         success: false,
-        error: error.response?.data?.error?.message || 'Registration failed',
+        error: errorMessage,
       };
     }
   };

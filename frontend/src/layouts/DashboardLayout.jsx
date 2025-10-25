@@ -18,7 +18,7 @@
  */
 
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Inbox, Settings, LogOut, Moon, Sun, User } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Settings, LogOut, Moon, Sun, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
@@ -35,7 +35,7 @@ function DashboardLayout() {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/inboxes', label: 'Inboxes', icon: Inbox },
+    { path: '/conversations', label: 'Conversations', icon: MessageSquare },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];
 

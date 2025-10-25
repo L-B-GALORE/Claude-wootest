@@ -24,6 +24,7 @@ function SettingsPage() {
 
   const tabs = [
     { id: 'providers', label: 'Providers' },
+    { id: 'inboxes', label: 'Inboxes' },
     { id: 'company', label: 'Company' },
     { id: 'team', label: 'Team' },
     { id: 'profile', label: 'Profile' },
@@ -122,6 +123,83 @@ function SettingsPage() {
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 mt-2">
                       Coming soon
                     </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'inboxes' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                  Inboxes
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Organize conversations by team or department
+                </p>
+              </div>
+              <button
+                disabled
+                className="bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                Create Inbox
+              </button>
+            </div>
+
+            {/* Empty State */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-12">
+              <div className="text-center">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+                <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                  No inboxes yet
+                </h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Get started by connecting a provider, then create your first inbox.
+                </p>
+              </div>
+            </div>
+
+            {/* Info Box */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg
+                    className="h-5 w-5 text-blue-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-blue-800 dark:text-blue-400">
+                    What are inboxes?
+                  </h3>
+                  <div className="mt-2 text-sm text-blue-700 dark:text-blue-300">
+                    <p>
+                      Inboxes help you organize customer conversations by team or department.
+                      Assign phone numbers, email addresses, and chat channels to different inboxes,
+                      and control which team members can access each inbox.
+                    </p>
                   </div>
                 </div>
               </div>

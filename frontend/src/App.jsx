@@ -7,8 +7,8 @@
  * - /login - Public login page
  * - /register - Public registration page
  * - /dashboard - Protected dashboard (requires auth)
- * - /inboxes - Protected inbox management
- * - /settings - Protected settings
+ * - /conversations - Protected conversations page
+ * - /settings - Protected settings (includes Inboxes tab)
  *
  * BEFORE MODIFYING:
  * - Will this change affect the routing structure?
@@ -27,7 +27,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
-import InboxListPage from './pages/inboxes/InboxListPage';
+import ConversationsPage from './pages/conversations/ConversationsPage';
 import SettingsPage from './pages/settings/SettingsPage';
 
 // Protected Route Component
@@ -67,7 +67,7 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/inboxes" element={<InboxListPage />} />
+        <Route path="/conversations" element={<ConversationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
 

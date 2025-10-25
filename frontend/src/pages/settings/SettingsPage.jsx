@@ -25,6 +25,12 @@ function SettingsPage() {
     { id: 'profile', label: 'Profile' },
   ];
 
+  // Fetch data on initial mount
+  useEffect(() => {
+    fetchProviders();
+  }, []);
+
+  // Fetch data when switching tabs
   useEffect(() => {
     if (activeTab === 'providers') {
       fetchProviders();

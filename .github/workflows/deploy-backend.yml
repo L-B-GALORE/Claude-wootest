@@ -64,6 +64,4 @@ jobs:
       - name: Deployment Summary
         run: |
           echo "✅ Backend Worker deployed successfully!"
-          echo "🌐 Worker URL: https://customer-service-platform-api.${CLOUDFLARE_ACCOUNT_ID}.workers.dev"
-        env:
-          CLOUDFLARE_ACCOUNT_ID: f09bbb81e8be554d6e67b5de063d8925
+          echo "🌐 Worker URL: https://customer-service-platform-api.lilboo.workers.dev"

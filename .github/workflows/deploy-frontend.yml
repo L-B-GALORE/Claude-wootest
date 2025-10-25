@@ -49,8 +49,8 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: https://customer-service-platform-api.f09bbb81e8be554d6e67b5de063d8925.workers.dev
-          VITE_WS_URL: wss://customer-service-platform-api.f09bbb81e8be554d6e67b5de063d8925.workers.dev/ws
+          VITE_API_URL: https://customer-service-platform-api.lilboo.workers.dev
+          VITE_WS_URL: wss://customer-service-platform-api.lilboo.workers.dev/ws
 
       - name: Create Pages project if not exists
         continue-on-error: true

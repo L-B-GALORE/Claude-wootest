@@ -51,7 +51,7 @@ app.get('/', async (c) => {
     }
 
     // Decrypt credentials
-    const credentials = decryptCredentials(
+    const credentials = await decryptCredentials(
       provider.credentials,
       c.env.ENCRYPTION_KEY
     );

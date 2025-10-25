@@ -108,7 +108,7 @@ app.post('/', async (c) => {
       accessTokenKeySecret: accessTokenKey.secret,
     };
 
-    const encryptedCredentials = encryptCredentials(
+    const encryptedCredentials = await encryptCredentials(
       credentials,
       c.env.ENCRYPTION_KEY
     );

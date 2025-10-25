@@ -22,13 +22,21 @@ import { useAuth } from './context/AuthContext';
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
+import SettingsLayout from './pages/settings/SettingsLayout';
 
 // Pages
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ConversationsPage from './pages/conversations/ConversationsPage';
-import SettingsPage from './pages/settings/SettingsPage';
+
+// Settings Pages
+import ProvidersPage from './pages/settings/ProvidersPage';
+import ChannelsPage from './pages/settings/ChannelsPage';
+import InboxesPage from './pages/settings/InboxesPage';
+import CompanyPage from './pages/settings/CompanyPage';
+import TeamPage from './pages/settings/TeamPage';
+import ProfilePage from './pages/settings/ProfilePage';
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
@@ -68,7 +76,24 @@ function App() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/conversations" element={<ConversationsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+      </Route>
+
+      {/* Settings routes (nested) */}
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/settings/providers" replace />} />
+        <Route path="providers" element={<ProvidersPage />} />
+        <Route path="channels" element={<ChannelsPage />} />
+        <Route path="inboxes" element={<InboxesPage />} />
+        <Route path="company" element={<CompanyPage />} />
+        <Route path="team" element={<TeamPage />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       {/* Redirect root to dashboard or login */}

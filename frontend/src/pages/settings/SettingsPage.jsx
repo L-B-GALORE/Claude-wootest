@@ -29,12 +29,7 @@ function SettingsPage() {
     { id: 'profile', label: 'Profile' },
   ];
 
-  // Fetch data on initial mount
-  useEffect(() => {
-    fetchProviders();
-  }, []);
-
-  // Fetch data when switching tabs
+  // Fetch data on mount and when switching tabs
   useEffect(() => {
     if (activeTab === 'providers') {
       fetchProviders();
@@ -88,7 +83,9 @@ function SettingsPage() {
   };
 
   const handleInboxCreated = (inbox) => {
-    setInboxes([...inboxes, inbox]);
+    // Refresh the inbox list to ensure we have latest data
+    fetchInboxes();
+    setShowCreateInboxModal(false);
   };
 
   const handleDeleteInbox = async (inboxId) => {

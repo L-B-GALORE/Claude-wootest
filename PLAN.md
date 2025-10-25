@@ -202,32 +202,112 @@ The database supports future granular permissions via:
 
 **Status**: ❌ Not started
 
-**Features**:
-- Connect Twilio account (Account SID, Auth Token)
-- Verify credentials
-- Store encrypted credentials
-- Fetch available phone numbers from Twilio
-- Display provider status (active/error)
-- Disconnect provider
+**User provides ONLY**: Account SID + Auth Token
+**App handles EVERYTHING else automatically**
 
-**Database**:
-- `Provider` table
-  - `type`: TWILIO
-  - `credentials`: Encrypted JSON `{ accountSid, authToken }`
-  - `status`: ACTIVE | ERROR | DISCONNECTED
+#### Auto-Provisioning Flow
 
-**Backend Endpoints** (to build):
-- `POST /api/v1/providers` - Add provider
-- `GET /api/v1/providers` - List providers
-- `GET /api/v1/providers/:id/numbers` - Fetch available numbers
-- `PUT /api/v1/providers/:id` - Update credentials
-- `DELETE /api/v1/providers/:id` - Disconnect
+When a company connects their Twilio account:
 
-**Twilio Integration**:
-- Use existing prototype as reference
-- Verify Twilio credentials on connection
-- Fetch phone numbers via Twilio API
-- Configure webhooks automatically
+1. **User Input** (only these 2 fields):
+   - Account SID
+   - Auth Token
+
+2. **App Validates Credentials**:
+   - Make test API call to Twilio
+   - Verify credentials are valid
+   - Store encrypted credentials
+
+3. **App Auto-Provisions Resources** (user doesn't do anything):
+   - Creates TwiML App in user's Twilio account via API
+   - Generates REST API Key (for server-to-server calls)
+   - Generates Access Token API Key (for browser SDK)
+   - Configures webhook URLs automatically
+   - Stores all SIDs and encrypted secrets
+
+4. **App Fetches Phone Numbers**:
+   - Retrieves all phone numbers from Twilio account
+   - Displays them in UI for user to "import"
+
+5. **User Imports Numbers**:
+   - User clicks "Import" on numbers they want to use
+   - App creates Channel records
+   - Numbers are now available for inbox/private line assignment
+
+#### What Gets Stored
+
+**Provider Table**:
+```json
+{
+  "id": "uuid",
+  "companyId": "uuid",
+  "type": "TWILIO",
+  "credentials": "encrypted_json",  // Encrypted: { accountSid, authToken, restApiKeySid, restApiKeySecret, accessTokenKeySid, accessTokenKeySecret, twimlAppSid }
+  "status": "ACTIVE",
+  "createdAt": "timestamp"
+}
+```
+
+**TwiML App Details** (stored in credentials JSON):
+- `twimlAppSid`: Created automatically
+- `restApiKeySid`: For server API calls (SMS, validation, etc.)
+- `restApiKeySecret`: Encrypted secret
+- `accessTokenKeySid`: For generating browser tokens
+- `accessTokenKeySecret`: Encrypted secret
+- `voiceUrl`: Auto-configured to our webhook
+- `statusCallback`: Auto-configured
+- `smsUrl`: Auto-configured
+
+**Why TWO API Keys?**
+- **REST API Key**: For backend operations (send SMS, update numbers, etc.)
+- **Access Token Key**: For generating browser SDK tokens (voice calls)
+- Separation allows independent key rotation and follows security best practices
+
+#### Backend Endpoints (to build)
+
+**Provider Connection**:
+- `POST /api/v1/providers` - Connect provider
+  - Input: `{ accountSid, authToken }`
+  - Process:
+    1. Validate credentials
+    2. Auto-provision TwiML app + API keys
+    3. Store encrypted credentials
+    4. Return provider ID
+  - Output: `{ providerId, status }`
+
+**Phone Number Fetching**:
+- `GET /api/v1/providers/:id/available-numbers` - Fetch from Twilio
+  - Calls Twilio API to get all numbers
+  - Returns: `[{ sid, phoneNumber, friendlyName, capabilities }]`
+
+**Phone Number Importing**:
+- `POST /api/v1/providers/:id/import-number` - Import into our system
+  - Input: `{ numberSid }`
+  - Process:
+    1. Verify number exists in Twilio account
+    2. Create Channel record
+    3. Configure webhooks on Twilio number (voice + SMS)
+  - Output: `{ channelId }`
+
+**Provider Management**:
+- `GET /api/v1/providers` - List all providers
+- `GET /api/v1/providers/:id` - Get provider details
+- `DELETE /api/v1/providers/:id` - Disconnect provider
+
+#### Reference Implementation
+
+See `/reference-prototype/api/index.js`:
+- `autoProvision()` function (lines 402-443)
+- `POST /api/setup/voice/complete` (lines 783-887)
+- `getTwilioRestClient()` (lines 455-497)
+
+#### Important Notes
+
+- **User NEVER configures anything in Twilio dashboard**
+- **App handles ALL webhook configuration via API**
+- **API Keys are preferred over Auth Token** (security best practice)
+- **All secrets are encrypted** before storing in database
+- **Credentials are scoped per company** (multi-tenant)
 
 ---
 
@@ -273,33 +353,125 @@ The database supports future granular permissions via:
 - Create inbox with name and description
 - Edit inbox details
 - Delete inbox
-- Assign channels (phone numbers) to inbox
+- Assign phone numbers to inbox
 - Assign users (agents) to inbox
 - View inbox members
+- Configure routing strategy per inbox
 
 **Database**:
 - `Inbox` table (name, description)
 - `InboxChannel` - Which phone numbers go to this inbox
 - `InboxMember` - Which users have access to this inbox
+- `RoutingStrategy` - How calls are distributed for each inbox
 
-**Backend Endpoints** (to build):
+#### Complete Inbox Flow
+
+**1. Owner/Admin Creates Inbox**:
+```
+POST /api/v1/inboxes
+{ name: "Customer Service", description: "Main support line" }
+→ Creates inbox with ID
+```
+
+**2. Assign Phone Numbers to Inbox**:
+```
+POST /api/v1/inboxes/{inboxId}/channels
+{ channelId: "uuid-of-phone-number" }
+→ Links phone number to inbox
+→ Configures Twilio webhook to point to our app
+```
+
+**3. Assign Users to Inbox**:
+```
+POST /api/v1/inboxes/{inboxId}/members
+{ userId: "uuid-of-agent" }
+→ Grants user access to this inbox
+→ User can now see conversations for numbers in this inbox
+```
+
+**4. Configure Routing Strategy**:
+```
+PUT /api/v1/inboxes/{inboxId}/routing
+{ strategyType: "RING_ALL", config: { ringCellPhones: true } }
+→ Determines how incoming calls are handled
+```
+
+#### Conversation Access Control
+
+**CRITICAL RULE**: Users can ONLY access conversations for inboxes they're assigned to.
+
+**Backend Query Logic**:
+```javascript
+// Get conversations for current user
+function getUserConversations(userId) {
+  // 1. Find all inboxes this user is a member of
+  const userInboxes = await InboxMember.findAll({ where: { userId } })
+  const inboxIds = userInboxes.map(m => m.inboxId)
+
+  // 2. Find all channels assigned to those inboxes
+  const inboxChannels = await InboxChannel.findAll({ where: { inboxId: inboxIds } })
+  const channelIds = inboxChannels.map(c => c.channelId)
+
+  // 3. Return conversations ONLY for those channels
+  return await Conversation.findAll({ where: { channelId: channelIds, companyId } })
+}
+```
+
+**Access Control Middleware**:
+- Every conversation endpoint checks: Is user assigned to the inbox that owns this conversation's channel?
+- If NOT assigned: Return 403 Forbidden
+- If assigned: Allow access
+
+**Example**:
+- Inbox A has phone number +1-555-0001
+- Inbox B has phone number +1-555-0002
+- Agent 1 is assigned to Inbox A only
+- Agent 2 is assigned to Inbox B only
+- Call comes in to +1-555-0001
+- Result: Only Agent 1 can see/access this conversation
+
+#### Multiple Phone Numbers Per Inbox
+
+**Supported**: One inbox can have multiple phone numbers assigned.
+
+**Example**:
+- Inbox: "Sales Team"
+- Phone Numbers:
+  - +1-555-1000 (Main sales line)
+  - +1-555-1001 (West coast line)
+  - +1-555-1002 (East coast line)
+- All 3 numbers route to the same inbox
+- All assigned agents can answer calls/messages from any of these numbers
+
+#### Backend Endpoints (to build)
+
+**Inbox CRUD**:
 - `POST /api/v1/inboxes` - Create inbox
-- `GET /api/v1/inboxes` - List inboxes
+- `GET /api/v1/inboxes` - List inboxes (only ones user has access to)
 - `GET /api/v1/inboxes/:id` - Get inbox details
 - `PUT /api/v1/inboxes/:id` - Update inbox
 - `DELETE /api/v1/inboxes/:id` - Delete inbox
-- `POST /api/v1/inboxes/:id/channels` - Assign channel
-- `DELETE /api/v1/inboxes/:id/channels/:channelId` - Remove channel
+
+**Channel Assignment**:
+- `POST /api/v1/inboxes/:id/channels` - Assign phone number to inbox
+  - Removes from private line if was assigned there
+  - Configures Twilio webhook
+- `DELETE /api/v1/inboxes/:id/channels/:channelId` - Remove phone number
+- `GET /api/v1/inboxes/:id/channels` - List assigned phone numbers
+
+**User Assignment**:
 - `POST /api/v1/inboxes/:id/members` - Add user to inbox
 - `DELETE /api/v1/inboxes/:id/members/:userId` - Remove user
+- `GET /api/v1/inboxes/:id/members` - List inbox members
 
 **Frontend UI**:
 - Inbox list page
 - Create inbox modal
 - Inbox detail page with:
-  - Assigned phone numbers
-  - Assigned users
+  - Assigned phone numbers (with Add/Remove buttons)
+  - Assigned users (with Add/Remove buttons)
   - Routing strategy configuration
+  - Recent conversations count
 
 ---
 

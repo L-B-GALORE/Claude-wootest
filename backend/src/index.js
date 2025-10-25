@@ -38,7 +38,7 @@ import { prettyJSON } from 'hono/pretty-json';
 import authRoutes from './api/auth/index.js';
 import providerRoutes from './api/providers/index.js';
 import channelRoutes from './api/channels/index.js';
-// import inboxRoutes from './api/inboxes';
+import inboxRoutes from './api/inboxes/index.js';
 // import conversationRoutes from './api/conversations';
 // import messageRoutes from './api/messages';
 // import voiceRoutes from './api/voice';
@@ -88,6 +88,9 @@ api.route('/providers', providerRoutes);
 
 api.use('/channels/*', authMiddleware);
 api.route('/channels', channelRoutes);
+
+api.use('/inboxes/*', authMiddleware);
+api.route('/inboxes', inboxRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

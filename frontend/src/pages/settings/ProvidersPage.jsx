@@ -10,12 +10,14 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Mail } from 'lucide-react';
 import ConnectTwilioModal from '../../components/modals/ConnectTwilioModal';
 import ImportNumbersModal from '../../components/modals/ImportNumbersModal';
 import api from '../../services/api';
 
 function ProvidersPage() {
+  const location = useLocation();
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showTwilioModal, setShowTwilioModal] = useState(false);
@@ -24,7 +26,7 @@ function ProvidersPage() {
 
   useEffect(() => {
     fetchProviders();
-  }, []);
+  }, [location.pathname]);
 
   const fetchProviders = async () => {
     setLoading(true);

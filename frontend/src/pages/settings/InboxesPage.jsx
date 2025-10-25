@@ -11,18 +11,20 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { MessageSquare, Trash2 } from 'lucide-react';
 import CreateInboxModal from '../../components/modals/CreateInboxModal';
 import api from '../../services/api';
 
 function InboxesPage() {
+  const location = useLocation();
   const [inboxes, setInboxes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     fetchInboxes();
-  }, []);
+  }, [location.pathname]);
 
   const fetchInboxes = async () => {
     setLoading(true);

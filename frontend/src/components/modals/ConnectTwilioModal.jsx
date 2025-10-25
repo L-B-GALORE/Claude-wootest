@@ -18,6 +18,7 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import api from '../../services/api';
 
 function ConnectTwilioModal({ isOpen, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -41,28 +42,20 @@ function ConnectTwilioModal({ isOpen, onClose, onSuccess }) {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/providers/twilio', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      });
+      const response = await api.post('/api/v1/providers/twilio', formData);
 
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error?.message || 'Failed to connect Twilio');
+      if (!response.data.success) {
+        throw new Error(response.data.error?.message || 'Failed to connect Twilio');
       }
 
       // Success!
       setFormData({ accountSid: '', authToken: '' });
-      onSuccess(data.data.provider);
+      onSuccess(response.data.data.provider);
       onClose();
     } catch (err) {
-      setError(err.message);
+      console.error('Twilio connection error:', err);
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Failed to connect Twilio';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

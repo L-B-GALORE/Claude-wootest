@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import ConnectTwilioModal from '../../components/modals/ConnectTwilioModal';
 import ImportNumbersModal from '../../components/modals/ImportNumbersModal';
 import { Phone, MessageSquare, Mail, Edit2 } from 'lucide-react';
+import api from '../../services/api';
 
 function SettingsPage() {
   const { user, company } = useAuth();
@@ -35,13 +36,9 @@ function SettingsPage() {
   const fetchProviders = async () => {
     setLoadingProviders(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/providers', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setProviders(data.data.providers);
+      const response = await api.get('/api/v1/providers');
+      if (response.data.success) {
+        setProviders(response.data.data.providers);
       }
     } catch (error) {
       console.error('Failed to fetch providers:', error);
@@ -53,13 +50,9 @@ function SettingsPage() {
   const fetchChannels = async () => {
     setLoadingChannels(true);
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/channels', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setChannels(data.data.channels);
+      const response = await api.get('/api/v1/channels');
+      if (response.data.success) {
+        setChannels(response.data.data.channels);
       }
     } catch (error) {
       console.error('Failed to fetch channels:', error);

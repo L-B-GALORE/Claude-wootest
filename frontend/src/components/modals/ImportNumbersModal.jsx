@@ -18,6 +18,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Phone, MessageSquare, Image } from 'lucide-react';
+import api from '../../services/api';
 
 function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
   const [numbers, setNumbers] = useState([]);
@@ -37,22 +38,16 @@ function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch(`/api/v1/providers/${providerId}/available-numbers`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await api.get(`/api/v1/providers/${providerId}/available-numbers`);
 
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error?.message || 'Failed to fetch numbers');
+      if (!response.data.success) {
+        throw new Error(response.data.error?.message || 'Failed to fetch numbers');
       }
 
-      setNumbers(data.data.numbers);
+      setNumbers(response.data.data.numbers);
     } catch (err) {
-      setError(err.message);
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Failed to fetch numbers';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -77,30 +72,23 @@ function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
     setError('');
 
     try {
-      const token = localStorage.getItem('accessToken');
       const numbersToImport = numbers.filter((n) => selectedNumbers.has(n.sid));
 
-      const response = await fetch(`/api/v1/providers/${providerId}/import-channels`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ numbers: numbersToImport }),
+      const response = await api.post(`/api/v1/providers/${providerId}/import-channels`, {
+        numbers: numbersToImport,
       });
 
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error?.message || 'Failed to import numbers');
+      if (!response.data.success) {
+        throw new Error(response.data.error?.message || 'Failed to import numbers');
       }
 
       // Success!
-      onSuccess(data.data);
+      onSuccess(response.data.data);
       setSelectedNumbers(new Set());
       onClose();
     } catch (err) {
-      setError(err.message);
+      const errorMessage = err.response?.data?.error?.message || err.message || 'Failed to import numbers';
+      setError(errorMessage);
     } finally {
       setImporting(false);
     }

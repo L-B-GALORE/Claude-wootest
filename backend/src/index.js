@@ -39,6 +39,7 @@ import authRoutes from './api/auth/index.js';
 import providerRoutes from './api/providers/index.js';
 import channelRoutes from './api/channels/index.js';
 import inboxRoutes from './api/inboxes/index.js';
+import userRoutes from './api/users/index.js';
 // import conversationRoutes from './api/conversations';
 // import messageRoutes from './api/messages';
 // import voiceRoutes from './api/voice';
@@ -91,6 +92,9 @@ api.route('/channels', channelRoutes);
 
 api.use('/inboxes/*', authMiddleware);
 api.route('/inboxes', inboxRoutes);
+
+api.use('/users/*', authMiddleware);
+api.route('/users', userRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

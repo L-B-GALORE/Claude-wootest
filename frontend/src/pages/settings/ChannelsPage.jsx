@@ -13,11 +13,14 @@
 import { useState, useEffect } from 'react';
 import { Phone, Mail, Edit2 } from 'lucide-react';
 import SettingsLayout from './SettingsLayout';
+import EditChannelRoutingModal from '../../components/modals/EditChannelRoutingModal';
 import api from '../../services/api';
 
 function ChannelsPageContent() {
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showRoutingModal, setShowRoutingModal] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState(null);
 
   useEffect(() => {
     fetchChannels();
@@ -40,6 +43,17 @@ function ChannelsPageContent() {
   const groupedChannels = {
     phone: channels.filter((c) => c.type === 'PHONE'),
     email: channels.filter((c) => c.type === 'EMAIL'),
+  };
+
+  const handleEditRouting = (channel) => {
+    setSelectedChannel(channel);
+    setShowRoutingModal(true);
+  };
+
+  const handleRoutingUpdated = () => {
+    setShowRoutingModal(false);
+    setSelectedChannel(null);
+    fetchChannels();
   };
 
   const getRoutingLabel = (channel) => {
@@ -129,9 +143,9 @@ function ChannelsPageContent() {
                         </div>
                       </div>
                       <button
-                        disabled
-                        className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-                        title="Edit routing (coming soon)"
+                        onClick={() => handleEditRouting(channel)}
+                        className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                        title="Edit routing"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -156,10 +170,18 @@ function ChannelsPageContent() {
                     className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-900 dark:text-white">{channel.identifier}</span>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {channel.identifier}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Routing: {getRoutingLabel(channel)}
+                        </div>
+                      </div>
                       <button
-                        disabled
-                        className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => handleEditRouting(channel)}
+                        className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors"
+                        title="Edit routing"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -171,6 +193,13 @@ function ChannelsPageContent() {
           )}
         </div>
       )}
+
+      <EditChannelRoutingModal
+        isOpen={showRoutingModal}
+        onClose={() => setShowRoutingModal(false)}
+        channel={selectedChannel}
+        onSuccess={handleRoutingUpdated}
+      />
     </div>
   );
 }

@@ -22,6 +22,7 @@ import { LayoutDashboard, MessageSquare, Settings, LogOut, Moon, Sun, User } fro
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import CallManager from '../components/calls/CallManager';
+import DeviceStatus from '../components/calls/DeviceStatus';
 
 function DashboardLayout() {
   const { user, company, logout } = useAuth();
@@ -124,6 +125,9 @@ function DashboardLayout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      {/* Device Status Indicator */}
+      <DeviceStatus />
 
       {/* Call Manager - always present when authenticated */}
       <CallManager />

@@ -8,13 +8,15 @@
  * - Create new inbox
  * - Delete inbox
  * - Configure routing
+ * - Manage members
  * - View member counts
  */
 
 import { useState, useEffect } from 'react';
-import { MessageSquare, Trash2, Settings } from 'lucide-react';
+import { MessageSquare, Trash2, Settings, Users } from 'lucide-react';
 import CreateInboxModal from '../../components/modals/CreateInboxModal';
 import ConfigureRoutingModal from '../../components/modals/ConfigureRoutingModal';
+import ManageMembersModal from '../../components/modals/ManageMembersModal';
 import SettingsLayout from './SettingsLayout';
 import api from '../../services/api';
 
@@ -23,6 +25,7 @@ function InboxesPageContent() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showRoutingModal, setShowRoutingModal] = useState(false);
+  const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedInbox, setSelectedInbox] = useState(null);
 
   useEffect(() => {
@@ -55,6 +58,17 @@ function InboxesPageContent() {
 
   const handleRoutingConfigured = () => {
     setShowRoutingModal(false);
+    setSelectedInbox(null);
+    fetchInboxes();
+  };
+
+  const handleManageMembers = (inbox) => {
+    setSelectedInbox(inbox);
+    setShowMembersModal(true);
+  };
+
+  const handleMembersUpdated = () => {
+    setShowMembersModal(false);
     setSelectedInbox(null);
     fetchInboxes();
   };
@@ -129,9 +143,13 @@ function InboxesPageContent() {
                     </p>
                   )}
                   <div className="flex items-center gap-4 mt-3">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                    <button
+                      onClick={() => handleManageMembers(inbox)}
+                      className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1"
+                    >
+                      <Users className="w-3 h-3" />
                       {inbox.memberCount} member{inbox.memberCount !== 1 ? 's' : ''}
-                    </span>
+                    </button>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       {inbox.channelCount || 0} channel{(inbox.channelCount || 0) !== 1 ? 's' : ''} connected
                     </span>
@@ -173,6 +191,13 @@ function InboxesPageContent() {
         onClose={() => setShowRoutingModal(false)}
         inbox={selectedInbox}
         onSuccess={handleRoutingConfigured}
+      />
+
+      <ManageMembersModal
+        isOpen={showMembersModal}
+        onClose={() => setShowMembersModal(false)}
+        inbox={selectedInbox}
+        onSuccess={handleMembersUpdated}
       />
     </div>
   );

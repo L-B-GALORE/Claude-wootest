@@ -301,7 +301,7 @@ export async function generateAccessToken(
       },
     };
 
-    // Generate JWT token
+    // Generate JWT token with identity
     const token = await new SignJWT({
       jti: `${apiKeySid}-${now}`,
       iss: apiKeySid,
@@ -309,11 +309,13 @@ export async function generateAccessToken(
       nbf: now,
       exp: now + 3600, // 1 hour expiration
       grants: grants,
+      identity: identity, // CRITICAL: Must match <Client> name in TwiML
     })
       .setProtectedHeader({ alg: 'HS256', typ: 'JWT', cty: 'twilio-fpa;v=1' })
       .setIssuedAt(now)
       .sign(secret);
 
+    console.log(`[Twilio] Generated access token for identity: ${identity}`);
     return token;
   } catch (error) {
     console.error('Failed to generate access token:', error);

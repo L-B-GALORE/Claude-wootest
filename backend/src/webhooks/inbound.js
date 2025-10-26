@@ -27,14 +27,14 @@ const app = new Hono();
  * Generate TwiML response for RING_ALL strategy
  * Rings all logged-in users' browsers simultaneously
  */
-function generateRingAllTwiML(memberIdentities, callSid) {
+function generateRingAllTwiML(memberIdentities) {
   const clientDialXml = memberIdentities
     .map((identity) => `    <Client>${identity}</Client>`)
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial timeout="30" action="/webhooks/dial-status/${callSid}">
+  <Dial timeout="30">
 ${clientDialXml}
   </Dial>
   <Say>Sorry, no one is available to take your call. Please try again later.</Say>
@@ -164,8 +164,11 @@ app.post('/:channelId', async (c) => {
           // Get all member user IDs (these are their Twilio client identities)
           const memberIdentities = inbox.members.map((m) => m.userId);
 
+          console.log('[Inbound] Ringing members:', memberIdentities);
+
           // Generate TwiML to ring all members
-          const twiml = generateRingAllTwiML(memberIdentities, body.CallSid);
+          const twiml = generateRingAllTwiML(memberIdentities);
+          console.log('[Inbound] Generated TwiML:', twiml);
           return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
         } else if (strategy.strategyType === 'NOTIFY_ALL') {
           // Voicemail strategy (not implemented yet)
@@ -184,7 +187,7 @@ app.post('/:channelId', async (c) => {
 
       // USER routing (private line)
       if (channel.routingType === 'USER' && channel.routingTargetId) {
-        const twiml = generateRingAllTwiML([channel.routingTargetId], body.CallSid);
+        const twiml = generateRingAllTwiML([channel.routingTargetId]);
         return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
       }
 

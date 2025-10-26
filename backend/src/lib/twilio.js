@@ -51,11 +51,16 @@ export async function validateTwilioCredentials(accountSid, authToken) {
  * Create TwiML Application
  * @param {string} accountSid - Twilio Account SID
  * @param {string} authToken - Twilio Auth Token
+ * @param {string} companyName - Company name for friendly name
  * @param {string} baseUrl - Base URL for webhooks (e.g., https://yourapp.workers.dev)
  * @returns {Promise<object>} - {sid, friendlyName}
  */
-export async function createTwiMLApp(accountSid, authToken, baseUrl) {
+export async function createTwiMLApp(accountSid, authToken, companyName, baseUrl) {
   try {
+    // Create friendly name with timestamp
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const friendlyName = `Customer Service Platform - ${companyName} - ${timestamp}`;
+
     const response = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Applications.json`,
       {
@@ -65,12 +70,10 @@ export async function createTwiMLApp(accountSid, authToken, baseUrl) {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          FriendlyName: 'Customer Service Platform',
-          VoiceUrl: `${baseUrl}/api/v1/webhooks/twilio/voice`,
+          FriendlyName: friendlyName,
+          VoiceUrl: `${baseUrl}/webhooks/twiml/voice`,
           VoiceMethod: 'POST',
-          SmsUrl: `${baseUrl}/api/v1/webhooks/twilio/sms`,
-          SmsMethod: 'POST',
-          StatusCallback: `${baseUrl}/api/v1/webhooks/twilio/status`,
+          StatusCallback: `${baseUrl}/webhooks/twiml/status`,
           StatusCallbackMethod: 'POST',
         }),
       }
@@ -132,10 +135,21 @@ export async function createTwilioAPIKey(accountSid, authToken, friendlyName) {
 }
 
 /**
- * Get all phone numbers from Twilio account
+ * Determine handler type from Twilio number config
+ */
+function getHandlerType(number) {
+  // Check voice handler
+  if (number.voice_url) return 'webhook';
+  if (number.voice_application_sid) return 'twiml_app';
+  if (number.voice_url && number.voice_url.includes('studio')) return 'studio_flow';
+  return 'none';
+}
+
+/**
+ * Get all phone numbers from Twilio account with current config
  * @param {string} accountSid - Twilio Account SID
  * @param {string} authToken - Twilio Auth Token
- * @returns {Promise<Array>} - Array of phone number objects
+ * @returns {Promise<Array>} - Array of phone number objects with current config
  */
 export async function getTwilioPhoneNumbers(accountSid, authToken) {
   try {
@@ -156,7 +170,7 @@ export async function getTwilioPhoneNumbers(accountSid, authToken) {
 
     const data = await response.json();
 
-    // Map to simplified format
+    // Map to format with current configuration
     return data.incoming_phone_numbers.map((number) => ({
       sid: number.sid,
       phoneNumber: number.phone_number,
@@ -165,6 +179,20 @@ export async function getTwilioPhoneNumbers(accountSid, authToken) {
         voice: number.capabilities.voice,
         sms: number.capabilities.sms,
         mms: number.capabilities.mms,
+      },
+      // Current configuration
+      currentConfig: {
+        voice: {
+          type: number.voice_url ? 'webhook' : (number.voice_application_sid ? 'twiml_app' : 'none'),
+          handler: number.voice_url || number.voice_application_sid || null,
+          method: number.voice_method || null,
+        },
+        sms: {
+          type: number.sms_url ? 'webhook' : (number.sms_application_sid ? 'twiml_app' : 'none'),
+          handler: number.sms_url || number.sms_application_sid || null,
+          method: number.sms_method || null,
+        },
+        statusCallback: number.status_callback || null,
       },
     }));
   } catch (error) {
@@ -180,6 +208,7 @@ export async function getTwilioPhoneNumbers(accountSid, authToken) {
  * @param {string} phoneNumberSid - Phone number SID to configure
  * @param {string} channelId - Channel ID for webhook URLs
  * @param {string} baseUrl - Base URL for webhooks
+ * @param {object} capabilities - Which capabilities to configure {voice: bool, sms: bool}
  * @returns {Promise<boolean>} - True if successful
  */
 export async function configurePhoneNumberWebhooks(
@@ -187,9 +216,29 @@ export async function configurePhoneNumberWebhooks(
   authToken,
   phoneNumberSid,
   channelId,
-  baseUrl
+  baseUrl,
+  capabilities = { voice: true, sms: true }
 ) {
   try {
+    const params = {};
+
+    // Only configure voice if requested
+    if (capabilities.voice) {
+      params.VoiceUrl = `${baseUrl}/webhooks/inbound/${channelId}`;
+      params.VoiceMethod = 'POST';
+      params.VoiceApplicationSid = ''; // Clear any TwiML App
+      params.VoiceFallbackUrl = ''; // Clear fallback
+    }
+
+    // Only configure SMS if requested
+    if (capabilities.sms) {
+      params.SmsUrl = `${baseUrl}/webhooks/inbound/${channelId}`;
+      params.SmsMethod = 'POST';
+      params.SmsApplicationSid = ''; // Clear any TwiML App
+      params.StatusCallback = `${baseUrl}/webhooks/status/${channelId}`;
+      params.StatusCallbackMethod = 'POST';
+    }
+
     const response = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers/${phoneNumberSid}.json`,
       {
@@ -198,14 +247,7 @@ export async function configurePhoneNumberWebhooks(
           Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: new URLSearchParams({
-          VoiceUrl: `${baseUrl}/api/v1/webhooks/twilio/voice/${channelId}`,
-          VoiceMethod: 'POST',
-          SmsUrl: `${baseUrl}/api/v1/webhooks/twilio/sms/${channelId}`,
-          SmsMethod: 'POST',
-          StatusCallback: `${baseUrl}/api/v1/webhooks/twilio/status/${channelId}`,
-          StatusCallbackMethod: 'POST',
-        }),
+        body: new URLSearchParams(params),
       }
     );
 

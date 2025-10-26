@@ -70,6 +70,15 @@ app.post('/', async (c) => {
       );
     }
 
+    // Get company info for friendly names
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true },
+    });
+
+    // Generate timestamp for friendly names
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
     // Step 1: Validate credentials
     console.log('Validating Twilio credentials...');
     await validateTwilioCredentials(accountSid, authToken);
@@ -79,33 +88,23 @@ app.post('/', async (c) => {
 
     // Step 2: Create TwiML App
     console.log('Creating TwiML App...');
-    const twilioApp = await createTwiMLApp(accountSid, authToken, baseUrl);
+    const twilioApp = await createTwiMLApp(accountSid, authToken, company.name, baseUrl);
 
-    // Step 3: Generate REST API Key
-    console.log('Generating REST API Key...');
-    const restApiKey = await createTwilioAPIKey(
+    // Step 3: Generate API Key
+    console.log('Generating API Key...');
+    const apiKey = await createTwilioAPIKey(
       accountSid,
       authToken,
-      'Customer Service Platform - REST API'
+      `API Access - ${company.name} - ${timestamp}`
     );
 
-    // Step 4: Generate Access Token API Key
-    console.log('Generating Access Token API Key...');
-    const accessTokenKey = await createTwilioAPIKey(
-      accountSid,
-      authToken,
-      'Customer Service Platform - Access Tokens'
-    );
-
-    // Step 5: Encrypt and store credentials
+    // Step 4: Encrypt and store credentials
     const credentials = {
       accountSid,
       authToken,
-      twilioAppSid: twilioApp.sid,
-      restApiKeySid: restApiKey.sid,
-      restApiKeySecret: restApiKey.secret,
-      accessTokenKeySid: accessTokenKey.sid,
-      accessTokenKeySecret: accessTokenKey.secret,
+      twimlAppSid: twilioApp.sid,
+      apiKeySid: apiKey.sid,
+      apiKeySecret: apiKey.secret,
     };
 
     const encryptedCredentials = await encryptCredentials(

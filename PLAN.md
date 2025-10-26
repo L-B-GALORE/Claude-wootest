@@ -62,7 +62,7 @@ A multi-tenant SaaS application where companies can manage customer service comm
 - **Database**: Neon Serverless Postgres
 - **ORM**: Prisma with driver adapters
 - **Authentication**: JWT (15min access, 7-day refresh)
-- **Real-time**: Cloudflare Durable Objects (WebSocket)
+- **Real-time**: Cloudflare Durable Objects (Socket.IO over WebSocket)
 - **Storage**: Cloudflare R2 (call recordings, attachments)
 - **Cache**: Cloudflare KV (sessions, presence)
 
@@ -73,7 +73,7 @@ A multi-tenant SaaS application where companies can manage customer service comm
 - **State Management**: React Context + hooks (Zustand for complex state)
 - **Routing**: React Router v6
 - **HTTP Client**: Axios with interceptors
-- **WebSocket**: Native WebSocket API
+- **WebSocket**: Socket.IO (for real-time features)
 - **UI Components**: Custom components (not a heavy library)
 - **Themes**: Light/Dark mode support
 
@@ -569,8 +569,8 @@ This is the core functionality that makes the app useful.
 3. Backend determines routing:
    - Is it a private line? → Ring that user only
    - Is it an inbox? → Get routing strategy, ring assigned users
-4. Backend creates WebSocket events to notify browsers
-5. Browser(s) receive "incoming_call" event
+4. Backend emits Socket.IO events to notify connected browsers
+5. Browser(s) receive "incoming_call" event via Socket.IO
 6. IncomingCall UI component renders
 7. User clicks "Accept" or "Reject"
 8. On accept: Twilio connects call to browser via WebRTC
@@ -624,7 +624,7 @@ This is the core functionality that makes the app useful.
 **Reusable Call Manager**:
 ```
 /frontend/src/features/calls/
-  ├── CallManager.jsx (manages state, WebSocket, Twilio SDK)
+  ├── CallManager.jsx (manages state, Socket.IO, Twilio SDK)
   ├── IncomingCallCard.jsx (UI for incoming)
   ├── ActiveCallCard.jsx (UI for active call)
   ├── DialPad.jsx (number entry + DTMF)
@@ -652,7 +652,7 @@ Every call creates:
 
 ---
 
-### 10. Real-Time Features (WebSocket)
+### 10. Real-Time Features (Socket.IO)
 
 **Status**: ⚠️ Code exists (Durable Objects), not connected
 
@@ -666,17 +666,46 @@ Every call creates:
 **Architecture**:
 - One Durable Object (CompanyRoom) per company
 - All users in a company connect to the same room
-- WebSocket URL: `wss://customer-service-platform-api.lilboo.workers.dev/ws?token={jwt}`
+- Socket.IO connection with JWT authentication
+- Connection URL: `wss://customer-service-platform-api.lilboo.workers.dev`
 
-**Frontend WebSocket Manager**:
+**Frontend Socket.IO Client**:
 ```javascript
-// /frontend/src/services/websocket.js
+// /frontend/src/services/socket.js
+import { io } from 'socket.io-client';
 
-class WebSocketManager {
-  connect(accessToken) { ... }
-  disconnect() { ... }
-  send(event, data) { ... }
-  on(event, callback) { ... }
+class SocketManager {
+  constructor() {
+    this.socket = null;
+  }
+
+  connect(accessToken) {
+    this.socket = io('wss://customer-service-platform-api.lilboo.workers.dev', {
+      auth: { token: accessToken },
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
+
+    this.socket.on('connect', () => console.log('Connected to Socket.IO'));
+    this.socket.on('disconnect', () => console.log('Disconnected from Socket.IO'));
+  }
+
+  disconnect() {
+    if (this.socket) this.socket.disconnect();
+  }
+
+  emit(event, data) {
+    if (this.socket) this.socket.emit(event, data);
+  }
+
+  on(event, callback) {
+    if (this.socket) this.socket.on(event, callback);
+  }
+
+  off(event, callback) {
+    if (this.socket) this.socket.off(event, callback);
+  }
 }
 
 // Events to handle:
@@ -688,6 +717,7 @@ class WebSocketManager {
 
 **Backend** (already exists):
 - `/backend/src/durable-objects/CompanyRoom.js`
+- Needs to be updated to use Socket.IO protocol
 - Needs to be connected to call routing system
 
 ---
@@ -732,11 +762,11 @@ class WebSocketManager {
   │   │   └── ...
   │   ├── services/        # API and external services
   │   │   ├── api.js       # Axios instance with interceptors
-  │   │   ├── websocket.js # WebSocket manager
+  │   │   ├── socket.js    # Socket.IO manager
   │   │   └── auth.js      # Auth utilities
   │   ├── hooks/           # Custom React hooks
   │   │   ├── useAuth.js
-  │   │   ├── useWebSocket.js
+  │   │   ├── useSocket.js
   │   │   └── ...
   │   ├── context/         # React Context providers
   │   │   ├── AuthContext.jsx
@@ -1013,7 +1043,7 @@ When building features, ensure:
    - Backend: Incoming call webhook
    - Backend: RING_ALL routing strategy
    - Frontend: Call UI components
-   - WebSocket integration
+   - Socket.IO integration
    - Test complete call flow
 
 ---
@@ -1068,7 +1098,7 @@ When building features, ensure:
 **Why Cloudflare Workers?**
 - Global edge network (low latency)
 - Serverless (no ops, scales automatically)
-- Durable Objects for WebSocket (stateful edge)
+- Durable Objects for Socket.IO/WebSocket (stateful edge)
 - R2 and KV for storage (cheap, fast)
 - Great free tier, affordable paid tiers
 

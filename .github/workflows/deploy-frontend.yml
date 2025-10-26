@@ -1,0 +1,73 @@
+# GitHub Actions Workflow: Deploy Frontend to Cloudflare Pages
+#
+# This workflow automatically builds and deploys the React frontend
+# to Cloudflare Pages whenever code is pushed.
+#
+# Prerequisites:
+# - Add CLOUDFLARE_API_TOKEN as a GitHub Repository Secret
+# - Add CLOUDFLARE_ACCOUNT_ID as a GitHub Repository Secret (or use hardcoded value)
+#
+# The workflow:
+# 1. Installs dependencies
+# 2. Builds the React app with Vite
+# 3. Deploys to Cloudflare Pages
+# 4. Outputs the deployment URL
+
+name: Deploy Frontend to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+      - claude/**
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build React app
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: https://customer-service-platform-api.lilboo.workers.dev
+          VITE_WS_URL: wss://customer-service-platform-api.lilboo.workers.dev/ws
+
+      - name: Create Pages project if not exists
+        continue-on-error: true
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/accounts/f09bbb81e8be554d6e67b5de063d8925/pages/projects" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"name":"customer-service-platform","production_branch":"main"}'
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: f09bbb81e8be554d6e67b5de063d8925
+          command: pages deploy frontend/dist --project-name=customer-service-platform --branch=main
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Frontend deployed successfully!"
+          echo "🌐 Pages URL: https://customer-service-platform.pages.dev"

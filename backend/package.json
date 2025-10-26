@@ -1,0 +1,28 @@
+{
+  "name": "customer-service-platform-backend",
+  "version": "1.0.0",
+  "description": "Multi-tenant customer service platform backend (Cloudflare Workers)",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.3",
+    "@prisma/adapter-neon": "^5.20.0",
+    "@prisma/client": "^5.20.0",
+    "bcryptjs": "^2.4.3",
+    "hono": "^4.6.0",
+    "jose": "^5.10.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241004.0",
+    "prisma": "^5.20.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^3.78.0"
+  }
+}

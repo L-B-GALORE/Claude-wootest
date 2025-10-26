@@ -1,0 +1,534 @@
+// Prisma Schema for Multi-Tenant Customer Service Platform
+//
+// This schema defines the complete database structure for a multi-tenant
+// omnichannel customer service platform supporting voice, SMS, email,
+// WhatsApp, and Facebook Messenger communications.
+//
+// Database: Neon Serverless Postgres
+// ORM: Prisma
+//
+// Key Principles:
+// - Multi-tenant isolation (every table has company_id)
+// - Channel abstraction (unified model for phone, email, chat)
+// - Conversation types (linear, threaded, transactional)
+// - Provider abstraction (Twilio, Plivo, Gmail, etc.)
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// CORE TENANT & USERS
+// ============================================================================
+
+model Company {
+  id         String   @id @default(uuid())
+  name       String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  users            User[]
+  providers        Provider[]
+  channels         Channel[]
+  inboxes          Inbox[]
+  contacts         Contact[]
+  conversations    Conversation[]
+  companySettings  CompanySetting[]
+  activityLogs     ActivityLog[]
+
+  @@map("companies")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  AGENT
+
+  @@map("user_role")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  companyId    String    @map("company_id")
+  email        String
+  passwordHash String    @map("password_hash")
+  name         String
+  role         UserRole  @default(AGENT)
+  cellPhone    String?   @map("cell_phone")
+  avatarUrl    String?   @map("avatar_url")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  lastActiveAt DateTime? @map("last_active_at")
+
+  // Relations
+  company               Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  preferences           UserPreference[]
+  inboxMemberships      InboxMember[]
+  assignedConversations Conversation[]
+  sentMessages          Message[]      @relation("UserSentMessages")
+  answeredCalls         VoiceCall[]
+  activityLogs          ActivityLog[]
+
+  @@unique([companyId, email])
+  @@index([companyId])
+  @@index([email])
+  @@map("users")
+}
+
+model UserPreference {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  key       String   // e.g., "cell_phone_enabled", "desktop_notifications"
+  value     Json     // Flexible JSON storage
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@map("user_preferences")
+}
+
+// ============================================================================
+// PROVIDERS & CHANNELS
+// ============================================================================
+
+enum ProviderType {
+  TWILIO
+  PLIVO
+  GMAIL
+  OUTLOOK
+  WHATSAPP_BUSINESS
+  FACEBOOK
+
+  @@map("provider_type")
+}
+
+enum ProviderStatus {
+  ACTIVE
+  ERROR
+  DISCONNECTED
+
+  @@map("provider_status")
+}
+
+model Provider {
+  id            String         @id @default(uuid())
+  companyId     String         @map("company_id")
+  type          ProviderType
+  credentials   String         // Encrypted JSON (Account SID, tokens, etc.)
+  status        ProviderStatus @default(ACTIVE)
+  errorMessage  String?        @map("error_message")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  channels Channel[]
+
+  @@index([companyId])
+  @@index([type])
+  @@map("providers")
+}
+
+enum ChannelType {
+  PHONE              // Voice, SMS, MMS
+  EMAIL              // Email messages
+  WHATSAPP           // WhatsApp messages
+  MESSENGER          // Facebook Messenger
+  INSTAGRAM          // Instagram DMs
+
+  @@map("channel_type")
+}
+
+enum RoutingType {
+  UNASSIGNED         // Channel exists but not routing anywhere
+  INBOX              // Routes to an inbox (team)
+  USER               // Routes to a specific user (private line)
+  VOICEMAIL          // Goes directly to voicemail (future)
+  CUSTOM             // Custom routing logic (future)
+
+  @@map("routing_type")
+}
+
+enum ChannelStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("channel_status")
+}
+
+model Channel {
+  id           String        @id @default(uuid())
+  companyId    String        @map("company_id")
+  providerId   String        @map("provider_id")
+  type         ChannelType
+  identifier   String        // Phone number (E.164), email address, WhatsApp number, etc.
+  capabilities Json          // Array: ["voice", "sms", "mms"] for PHONE or ["email"] for EMAIL
+  status       ChannelStatus @default(ACTIVE)
+  metadata     Json?         // Channel-specific config (Twilio SID, friendly name, etc.)
+
+  // Routing configuration
+  routingType      RoutingType @default(UNASSIGNED) @map("routing_type")
+  routingTargetId  String?     @map("routing_target_id") // inboxId or userId depending on routingType
+
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider      Provider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([companyId, identifier])
+  @@index([companyId])
+  @@index([providerId])
+  @@index([type])
+  @@index([routingType])
+  @@index([routingTargetId])
+  @@map("channels")
+}
+
+// ============================================================================
+// INBOXES & ASSIGNMENTS
+// ============================================================================
+
+model Inbox {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  name        String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  members           InboxMember[]
+  routingStrategies RoutingStrategy[]
+
+  @@index([companyId])
+  @@map("inboxes")
+}
+
+model InboxMember {
+  id        String   @id @default(uuid())
+  inboxId   String   @map("inbox_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  inbox Inbox @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([inboxId, userId])
+  @@index([inboxId])
+  @@index([userId])
+  @@map("inbox_members")
+}
+
+// ============================================================================
+// ROUTING STRATEGIES
+// ============================================================================
+
+enum StrategyType {
+  RING_ALL
+  NOTIFY_ALL
+  ROUND_ROBIN
+  PRIORITY_QUEUE
+
+  @@map("strategy_type")
+}
+
+model RoutingStrategy {
+  id          String      @id @default(uuid())
+  inboxId     String      @map("inbox_id")
+  channelType ChannelType @map("channel_type")
+  strategyType StrategyType @map("strategy_type")
+  config      Json?       // Strategy-specific settings
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  inbox Inbox @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+
+  @@unique([inboxId, channelType])
+  @@index([inboxId])
+  @@map("routing_strategies")
+}
+
+// ============================================================================
+// CONTACTS & CONVERSATIONS
+// ============================================================================
+
+model Contact {
+  id           String   @id @default(uuid())
+  companyId    String   @map("company_id")
+  phoneNumber  String?  @map("phone_number")
+  email        String?
+  name         String?
+  notes        String?
+  customFields Json?    @map("custom_fields")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([companyId])
+  @@index([phoneNumber])
+  @@index([email])
+  @@map("contacts")
+}
+
+enum ConversationType {
+  LINEAR     // SMS, WhatsApp, FB - one ongoing conversation
+  THREADED   // Email - multiple threads
+  TRANSACTIONAL // Voice - each call discrete
+
+  @@map("conversation_type")
+}
+
+enum ConversationStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+
+  @@map("conversation_status")
+}
+
+model Conversation {
+  id             String             @id @default(uuid())
+  companyId      String             @map("company_id")
+  contactId      String             @map("contact_id")
+  channelId      String             @map("channel_id")
+  type           ConversationType
+  threadId       String?            @map("thread_id") // For email threading
+  subject        String?            // For emails
+  status         ConversationStatus @default(OPEN)
+  assignedUserId String?            @map("assigned_user_id")
+  lastMessageAt  DateTime?          @map("last_message_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel      Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  assignedUser User?     @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages     Message[]
+
+  @@index([companyId])
+  @@index([contactId])
+  @@index([channelId])
+  @@index([status])
+  @@index([lastMessageAt])
+  @@index([assignedUserId])
+  @@map("conversations")
+}
+
+// ============================================================================
+// MESSAGES
+// ============================================================================
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+
+  @@map("message_direction")
+}
+
+enum SenderType {
+  CONTACT
+  USER
+  SYSTEM
+
+  @@map("sender_type")
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+
+  @@map("message_status")
+}
+
+model Message {
+  id             String           @id @default(uuid())
+  conversationId String           @map("conversation_id")
+  direction      MessageDirection
+  senderType     SenderType       @map("sender_type")
+  senderId       String?          @map("sender_id") // Contact ID or User ID
+  body           String           @db.Text
+  status         MessageStatus    @default(SENT)
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User?           @relation("UserSentMessages", fields: [senderId], references: [id], onDelete: SetNull)
+  media          MessageMedia[]
+  voiceCall      VoiceCall?
+  smsMessage     SmsMessage?
+  emailMessage   EmailMessage?
+  chatMessage    ChatMessage?
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+model MessageMedia {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  type      String   // image, audio, video, document
+  url       String   // R2 path
+  filename  String
+  sizeBytes Int      @map("size_bytes")
+  metadata  Json?    // Duration, dimensions, etc.
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_media")
+}
+
+// ============================================================================
+// CHANNEL-SPECIFIC METADATA
+// ============================================================================
+
+enum CallStatus {
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  BUSY
+
+  @@map("call_status")
+}
+
+model VoiceCall {
+  id               String     @id @default(uuid())
+  messageId        String     @unique @map("message_id")
+  providerCallId   String     @map("provider_call_id") // Twilio SID, Plivo UUID
+  durationSeconds  Int?       @map("duration_seconds")
+  recordingUrl     String?    @map("recording_url")
+  answeredByUserId String?    @map("answered_by_user_id")
+  callStatus       CallStatus @map("call_status")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  endedAt          DateTime?  @map("ended_at")
+
+  // Relations
+  message        Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  answeredByUser User?   @relation(fields: [answeredByUserId], references: [id], onDelete: SetNull)
+
+  @@index([providerCallId])
+  @@map("voice_calls")
+}
+
+model SmsMessage {
+  id                 String   @id @default(uuid())
+  messageId          String   @unique @map("message_id")
+  providerMessageId  String   @map("provider_message_id") // Twilio SID
+  segments           Int      @default(1)
+  providerStatus     String?  @map("provider_status")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([providerMessageId])
+  @@map("sms_messages")
+}
+
+model EmailMessage {
+  id        String   @id @default(uuid())
+  messageId String   @unique @map("message_id")
+  subject   String
+  threadId  String?  @map("thread_id") // Gmail thread ID, Outlook conversation ID
+  cc        Json?    // Array of email addresses
+  bcc       Json?
+  replyTo   String?  @map("reply_to")
+  headers   Json?    // Full email headers
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@map("email_messages")
+}
+
+enum ChatPlatform {
+  WHATSAPP
+  FACEBOOK_MESSENGER
+
+  @@map("chat_platform")
+}
+
+model ChatMessage {
+  id                String       @id @default(uuid())
+  messageId         String       @unique @map("message_id")
+  providerMessageId String       @map("provider_message_id")
+  platform          ChatPlatform
+  context           Json?        // Reply-to, forwarded, quoted message, etc.
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([providerMessageId])
+  @@map("chat_messages")
+}
+
+// ============================================================================
+// SETTINGS & AUDIT
+// ============================================================================
+
+model CompanySetting {
+  id        String   @id @default(uuid())
+  companyId String   @map("company_id")
+  key       String   // e.g., "force_cell_ringing", "business_hours"
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, key])
+  @@index([companyId])
+  @@map("company_settings")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  companyId  String   @map("company_id")
+  userId     String?  @map("user_id")
+  action     String   // e.g., "user.created", "call.answered"
+  entityType String   @map("entity_type") // e.g., "User", "Call"
+  entityId   String   @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([createdAt])
+  @@index([entityType])
+  @@map("activity_logs")
+}

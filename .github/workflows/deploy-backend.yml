@@ -1,0 +1,67 @@
+# GitHub Actions Workflow: Deploy Backend to Cloudflare Workers
+#
+# This workflow automatically deploys the backend Worker to Cloudflare
+# whenever code is pushed to the main branch or the current feature branch.
+#
+# Prerequisites:
+# - Add CLOUDFLARE_API_TOKEN as a GitHub Repository Secret
+#   (Settings → Secrets and variables → Actions → New repository secret)
+#
+# The workflow:
+# 1. Installs dependencies
+# 2. Deploys the Worker using Wrangler
+# 3. Outputs the deployment URL
+
+name: Deploy Backend to Cloudflare Workers
+
+on:
+  push:
+    branches:
+      - main
+      - claude/**
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Worker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Push Database Schema
+        working-directory: backend
+        run: npx prisma db push --accept-data-loss
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: backend
+          command: deploy
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ Backend Worker deployed successfully!"
+          echo "🌐 Worker URL: https://customer-service-platform-api.lilboo.workers.dev"

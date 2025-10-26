@@ -43,7 +43,7 @@ class TwilioDeviceService {
       // Create Device instance
       this.device = new Device(token, {
         logLevel: 'debug',
-        codecPreferences: [Device.Codec.Opus, Device.Codec.PCMU],
+        // Remove codecPreferences - let Twilio auto-select
         edge: 'ashburn',
       });
 

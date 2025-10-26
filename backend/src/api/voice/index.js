@@ -77,11 +77,13 @@ app.post('/token', async (c) => {
       c.env.ENCRYPTION_KEY
     );
 
-    // Generate access token
+    console.log('[Voice Token] Generating token for user:', userId);
+
+    // Generate access token using the API key
     const token = await generateAccessToken(
       credentials.accountSid,
-      credentials.accessTokenKeySid,
-      credentials.accessTokenKeySecret,
+      credentials.apiKeySid,
+      credentials.apiKeySecret,
       userId,
       user.name
     );

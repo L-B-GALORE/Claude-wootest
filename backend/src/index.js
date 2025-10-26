@@ -44,6 +44,9 @@ import userRoutes from './api/users/index.js';
 // import messageRoutes from './api/messages';
 // import voiceRoutes from './api/voice';
 
+// Import webhook routes (no auth required - called by external services)
+import webhookRoutes from './webhooks/index.js';
+
 // Import middleware
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -76,6 +79,9 @@ app.get('/health', (c) => {
     environment: c.env.ENVIRONMENT || 'production',
   });
 });
+
+// Webhook routes (no authentication - called by external services like Twilio)
+app.route('/webhooks', webhookRoutes);
 
 // API v1 routes
 const api = new Hono();

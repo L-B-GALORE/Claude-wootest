@@ -262,3 +262,61 @@ export async function configurePhoneNumberWebhooks(
     throw error;
   }
 }
+
+/**
+ * Generate Twilio Access Token for browser SDK
+ * @param {string} accountSid - Twilio Account SID
+ * @param {string} apiKeySid - API Key SID for access tokens
+ * @param {string} apiKeySecret - API Key Secret
+ * @param {string} identity - User identity (user ID)
+ * @param {string} friendlyName - User friendly name
+ * @returns {Promise<string>} - JWT access token
+ */
+export async function generateAccessToken(
+  accountSid,
+  apiKeySid,
+  apiKeySecret,
+  identity,
+  friendlyName
+) {
+  try {
+    // We'll use the Twilio REST API to generate tokens
+    // Or we can implement JWT generation directly using jose library
+
+    // For now, let's use a simple JWT approach with jose
+    const { SignJWT } = await import('jose');
+
+    const secret = new TextEncoder().encode(apiKeySecret);
+    const now = Math.floor(Date.now() / 1000);
+
+    // Create Voice Grant
+    const grants = {
+      voice: {
+        incoming: {
+          allow: true,
+        },
+        outgoing: {
+          application_sid: null, // Will be set if needed
+        },
+      },
+    };
+
+    // Generate JWT token
+    const token = await new SignJWT({
+      jti: `${apiKeySid}-${now}`,
+      iss: apiKeySid,
+      sub: accountSid,
+      nbf: now,
+      exp: now + 3600, // 1 hour expiration
+      grants: grants,
+    })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT', cty: 'twilio-fpa;v=1' })
+      .setIssuedAt(now)
+      .sign(secret);
+
+    return token;
+  } catch (error) {
+    console.error('Failed to generate access token:', error);
+    throw error;
+  }
+}

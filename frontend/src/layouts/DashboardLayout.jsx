@@ -21,6 +21,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, MessageSquare, Settings, LogOut, Moon, Sun, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import CallManager from '../components/calls/CallManager';
 
 function DashboardLayout() {
   const { user, company, logout } = useAuth();
@@ -123,6 +124,9 @@ function DashboardLayout() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+
+      {/* Call Manager - always present when authenticated */}
+      <CallManager />
     </div>
   );
 }

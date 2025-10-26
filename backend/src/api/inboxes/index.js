@@ -18,8 +18,12 @@
 
 import { Hono } from 'hono';
 import { getPrisma } from '../../lib/prisma.js';
+import routingRoutes from './routing.js';
 
 const app = new Hono();
+
+// Mount routing strategy routes
+app.route('/', routingRoutes);
 
 // Get all inboxes for company
 app.get('/', async (c) => {

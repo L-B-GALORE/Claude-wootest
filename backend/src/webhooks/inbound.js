@@ -8,8 +8,8 @@
  * This endpoint:
  * - Receives voice calls and SMS messages
  * - Validates the channel exists
+ * - Implements routing logic based on inbox strategy
  * - Returns appropriate TwiML response
- * - Creates conversation and message records
  *
  * BEFORE MODIFYING:
  * - This is called by Twilio for EVERY incoming call/SMS
@@ -24,20 +24,45 @@ import { getPrisma } from '../lib/prisma.js';
 const app = new Hono();
 
 /**
- * Generate TwiML response for voice calls
- * For now, plays a simple message. Will be replaced with routing logic.
+ * Generate TwiML response for RING_ALL strategy
+ * Rings all logged-in users' browsers simultaneously
  */
-function generateVoiceTwiML() {
+function generateRingAllTwiML(memberIdentities, callSid) {
+  const clientDialXml = memberIdentities
+    .map((identity) => `    <Client>${identity}</Client>`)
+    .join('\n');
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say>Thank you for calling. Please hold while we connect you to an agent.</Say>
-  <Pause length="60"/>
+  <Dial timeout="30" action="/webhooks/dial-status/${callSid}">
+${clientDialXml}
+  </Dial>
+  <Say>Sorry, no one is available to take your call. Please try again later.</Say>
+</Response>`;
+}
+
+/**
+ * Generate TwiML response for voicemail (placeholder)
+ */
+function generateVoicemailTwiML() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>This feature is coming soon. Please call back later.</Say>
+</Response>`;
+}
+
+/**
+ * Generate fallback TwiML for unrouted calls
+ */
+function generateUnroutedTwiML() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>This phone number is not configured. Please contact support.</Say>
 </Response>`;
 }
 
 /**
  * Generate TwiML response for SMS
- * For now, just acknowledges receipt. Will be replaced with inbox routing.
  */
 function generateSMSTwiML() {
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -49,7 +74,6 @@ function generateSMSTwiML() {
 app.post('/:channelId', async (c) => {
   try {
     const { channelId } = c.req.param();
-    const companyId = c.get('companyId'); // May be undefined for webhook calls
     const prisma = getPrisma(c.env.DATABASE_URL);
 
     // Get the request body (Twilio webhook parameters)
@@ -64,8 +88,6 @@ app.post('/:channelId', async (c) => {
     });
 
     // Validate channel exists
-    // Note: We don't filter by companyId here because Twilio doesn't send it
-    // We'll look up the company from the channel
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
       include: {
@@ -75,23 +97,101 @@ app.post('/:channelId', async (c) => {
 
     if (!channel) {
       console.error('Channel not found:', channelId);
-      // Still return valid TwiML to avoid Twilio errors
       return c.text(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Invalid configuration.</Say></Response>`,
+        generateUnroutedTwiML(),
         200,
         { 'Content-Type': 'text/xml' }
       );
     }
 
-    // Determine if this is voice or SMS based on request parameters
+    // Determine if this is voice or SMS
     const isVoice = body.CallSid ? true : false;
     const isSMS = body.MessageSid ? true : false;
 
     if (isVoice) {
-      // TODO: Implement call routing based on channel.routingType
-      // For now, return holding message
-      const twiml = generateVoiceTwiML();
-      return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
+      // Handle voice call routing
+      if (channel.routingType === 'UNASSIGNED') {
+        return c.text(generateUnroutedTwiML(), 200, {
+          'Content-Type': 'text/xml',
+        });
+      }
+
+      if (channel.routingType === 'INBOX' && channel.routingTargetId) {
+        // Get inbox and its routing strategy
+        const inbox = await prisma.inbox.findUnique({
+          where: { id: channel.routingTargetId },
+          include: {
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!inbox) {
+          return c.text(generateUnroutedTwiML(), 200, {
+            'Content-Type': 'text/xml',
+          });
+        }
+
+        // Get routing strategy for PHONE channel type
+        const strategy = await prisma.routingStrategy.findUnique({
+          where: {
+            inboxId_channelType: {
+              inboxId: inbox.id,
+              channelType: 'PHONE',
+            },
+          },
+        });
+
+        if (!strategy || strategy.strategyType === 'RING_ALL') {
+          // RING_ALL strategy (default if no strategy set)
+          if (inbox.members.length === 0) {
+            return c.text(
+              `<?xml version="1.0" encoding="UTF-8"?><Response><Say>No agents are assigned to this inbox.</Say></Response>`,
+              200,
+              { 'Content-Type': 'text/xml' }
+            );
+          }
+
+          // Get all member user IDs (these are their Twilio client identities)
+          const memberIdentities = inbox.members.map((m) => m.userId);
+
+          // Generate TwiML to ring all members
+          const twiml = generateRingAllTwiML(memberIdentities, body.CallSid);
+          return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
+        } else if (strategy.strategyType === 'NOTIFY_ALL') {
+          // Voicemail strategy (not implemented yet)
+          return c.text(generateVoicemailTwiML(), 200, {
+            'Content-Type': 'text/xml',
+          });
+        } else {
+          // Other strategies not yet implemented
+          return c.text(
+            `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Routing strategy not yet implemented.</Say></Response>`,
+            200,
+            { 'Content-Type': 'text/xml' }
+          );
+        }
+      }
+
+      // USER routing (private line)
+      if (channel.routingType === 'USER' && channel.routingTargetId) {
+        const twiml = generateRingAllTwiML([channel.routingTargetId], body.CallSid);
+        return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
+      }
+
+      // Fallback
+      return c.text(generateUnroutedTwiML(), 200, {
+        'Content-Type': 'text/xml',
+      });
     } else if (isSMS) {
       // TODO: Implement SMS routing to inbox
       // TODO: Create conversation and message records

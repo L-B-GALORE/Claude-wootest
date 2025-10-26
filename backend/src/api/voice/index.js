@@ -1,0 +1,111 @@
+/**
+ * Voice API Router
+ *
+ * Purpose: Handle voice call operations
+ *
+ * Routes:
+ * - POST /voice/token - Generate Twilio access token for browser calls
+ * - POST /voice/dial - Initiate outbound call
+ *
+ * BEFORE MODIFYING:
+ * - Tokens should expire appropriately
+ * - Validate user has permission to make calls
+ */
+
+import { Hono } from 'hono';
+import { getPrisma } from '../../lib/prisma.js';
+import { generateAccessToken } from '../../lib/twilio.js';
+import { decryptCredentials } from '../../lib/encryption.js';
+
+const app = new Hono();
+
+// Generate Twilio access token for browser SDK
+app.post('/token', async (c) => {
+  try {
+    const userId = c.get('userId');
+    const companyId = c.get('companyId');
+    const prisma = getPrisma(c.env.DATABASE_URL);
+
+    // Get user details
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    if (!user) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'USER_NOT_FOUND',
+            message: 'User not found',
+          },
+        },
+        404
+      );
+    }
+
+    // Get Twilio provider for this company
+    const provider = await prisma.provider.findFirst({
+      where: {
+        companyId: companyId,
+        type: 'TWILIO',
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!provider) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'PROVIDER_NOT_FOUND',
+            message: 'No active Twilio provider found',
+          },
+        },
+        404
+      );
+    }
+
+    // Decrypt credentials
+    const credentials = await decryptCredentials(
+      provider.credentials,
+      c.env.ENCRYPTION_KEY
+    );
+
+    // Generate access token
+    const token = await generateAccessToken(
+      credentials.accountSid,
+      credentials.accessTokenKeySid,
+      credentials.accessTokenKeySecret,
+      userId,
+      user.name
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        token,
+        identity: userId,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to generate access token:', error);
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'TOKEN_GENERATION_FAILED',
+          message: error.message || 'Failed to generate access token',
+        },
+      },
+      500
+    );
+  }
+});
+
+export default app;

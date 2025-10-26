@@ -40,9 +40,9 @@ import providerRoutes from './api/providers/index.js';
 import channelRoutes from './api/channels/index.js';
 import inboxRoutes from './api/inboxes/index.js';
 import userRoutes from './api/users/index.js';
+import voiceRoutes from './api/voice/index.js';
 // import conversationRoutes from './api/conversations';
 // import messageRoutes from './api/messages';
-// import voiceRoutes from './api/voice';
 
 // Import webhook routes (no auth required - called by external services)
 import webhookRoutes from './webhooks/index.js';
@@ -101,6 +101,9 @@ api.route('/inboxes', inboxRoutes);
 
 api.use('/users/*', authMiddleware);
 api.route('/users', userRoutes);
+
+api.use('/voice/*', authMiddleware);
+api.route('/voice', voiceRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

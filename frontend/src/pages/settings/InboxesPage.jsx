@@ -7,12 +7,14 @@
  * - List all inboxes
  * - Create new inbox
  * - Delete inbox
+ * - Configure routing
  * - View member counts
  */
 
 import { useState, useEffect } from 'react';
-import { MessageSquare, Trash2 } from 'lucide-react';
+import { MessageSquare, Trash2, Settings } from 'lucide-react';
 import CreateInboxModal from '../../components/modals/CreateInboxModal';
+import ConfigureRoutingModal from '../../components/modals/ConfigureRoutingModal';
 import SettingsLayout from './SettingsLayout';
 import api from '../../services/api';
 
@@ -20,6 +22,8 @@ function InboxesPageContent() {
   const [inboxes, setInboxes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showRoutingModal, setShowRoutingModal] = useState(false);
+  const [selectedInbox, setSelectedInbox] = useState(null);
 
   useEffect(() => {
     fetchInboxes();
@@ -41,6 +45,17 @@ function InboxesPageContent() {
 
   const handleInboxCreated = () => {
     setShowCreateModal(false);
+    fetchInboxes();
+  };
+
+  const handleConfigureRouting = (inbox) => {
+    setSelectedInbox(inbox);
+    setShowRoutingModal(true);
+  };
+
+  const handleRoutingConfigured = () => {
+    setShowRoutingModal(false);
+    setSelectedInbox(null);
     fetchInboxes();
   };
 
@@ -127,6 +142,13 @@ function InboxesPageContent() {
                 </div>
                 <div className="flex items-center gap-2 ml-4">
                   <button
+                    onClick={() => handleConfigureRouting(inbox)}
+                    className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                    title="Configure routing"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => handleDeleteInbox(inbox.id)}
                     className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                     title="Delete inbox"
@@ -144,6 +166,13 @@ function InboxesPageContent() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onSuccess={handleInboxCreated}
+      />
+
+      <ConfigureRoutingModal
+        isOpen={showRoutingModal}
+        onClose={() => setShowRoutingModal(false)}
+        inbox={selectedInbox}
+        onSuccess={handleRoutingConfigured}
       />
     </div>
   );

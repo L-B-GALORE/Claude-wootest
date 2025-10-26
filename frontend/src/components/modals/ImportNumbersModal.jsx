@@ -22,6 +22,7 @@ function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   useEffect(() => {
     if (isOpen && providerId) {
@@ -84,44 +85,6 @@ function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
     }));
   };
 
-  const getConfigDisplay = (config) => {
-    if (!config) return null;
-
-    const items = [];
-
-    if (config.type === 'none') {
-      return <span className="text-gray-500 dark:text-gray-400">Not configured</span>;
-    }
-
-    if (config.type === 'webhook') {
-      return (
-        <div className="flex items-center gap-1">
-          <ExternalLink className="w-3 h-3" />
-          <span className="text-blue-600 dark:text-blue-400 text-xs truncate" title={config.handler}>
-            Webhook: {config.handler?.substring(0, 30)}...
-          </span>
-        </div>
-      );
-    }
-
-    if (config.type === 'twiml_app') {
-      return (
-        <span className="text-purple-600 dark:text-purple-400 text-xs">
-          TwiML App: {config.handler}
-        </span>
-      );
-    }
-
-    if (config.type === 'studio_flow') {
-      return (
-        <span className="text-green-600 dark:text-green-400 text-xs">
-          Studio Flow
-        </span>
-      );
-    }
-
-    return null;
-  };
 
   const handleImport = async () => {
     if (selectedNumbers.size === 0) return;
@@ -254,25 +217,24 @@ function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
                           )}
                         </div>
 
-                        {/* Current Configuration */}
-                        {!number.imported && number.currentConfig && (
-                          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 space-y-2">
-                            <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                              Current Configuration:
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                              <div>
-                                <span className="text-gray-600 dark:text-gray-400">Voice:</span>
-                                <div className="mt-1">
-                                  {getConfigDisplay(number.currentConfig.voice)}
-                                </div>
-                              </div>
-                              <div>
-                                <span className="text-gray-600 dark:text-gray-400">SMS:</span>
-                                <div className="mt-1">
-                                  {getConfigDisplay(number.currentConfig.sms)}
-                                </div>
-                              </div>
+                        {/* Warning Message */}
+                        {!number.imported && (
+                          <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                              <p className="text-xs text-amber-800 dark:text-amber-300">
+                                If you're using this phone number for something else outside of this app it may stop working.{' '}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowHelpModal(true);
+                                  }}
+                                  className="text-amber-900 dark:text-amber-200 underline font-medium hover:text-amber-700 dark:hover:text-amber-100"
+                                >
+                                  Click here
+                                </button>
+                                {' '}for more details.
+                              </p>
                             </div>
                           </div>
                         )}
@@ -360,6 +322,38 @@ function ImportNumbersModal({ isOpen, onClose, providerId, onSuccess }) {
           </div>
         </div>
       </div>
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Phone Number Configuration Help
+              </h3>
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600 dark:text-gray-400">
+                Help Modal Content Coming Soon
+              </p>
+            </div>
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+              <button
+                onClick={() => setShowHelpModal(false)}
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

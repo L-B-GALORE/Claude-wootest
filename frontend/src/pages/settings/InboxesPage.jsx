@@ -118,6 +118,9 @@ function InboxesPageContent() {
                       {inbox.memberCount} member{inbox.memberCount !== 1 ? 's' : ''}
                     </span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {inbox.channelCount || 0} channel{(inbox.channelCount || 0) !== 1 ? 's' : ''} connected
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
                       Created {new Date(inbox.createdAt).toLocaleDateString()}
                     </span>
                   </div>

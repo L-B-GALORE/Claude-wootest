@@ -116,13 +116,14 @@ app.post('/', async (c) => {
           },
         });
 
-        // Configure webhooks on Twilio number
+        // Configure webhooks on Twilio number based on selected capabilities
         await configurePhoneNumberWebhooks(
           credentials.accountSid,
           credentials.authToken,
           number.sid,
           channel.id,
-          baseUrl
+          baseUrl,
+          number.capabilities // Pass selected capabilities {voice: bool, sms: bool}
         );
 
         importResults.push({

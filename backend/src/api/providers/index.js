@@ -163,11 +163,7 @@ app.delete('/:id', async (c) => {
         companyId: companyId,
       },
       include: {
-        _count: {
-          select: {
-            channels: true,
-          },
-        },
+        channels: true,
       },
     });
 
@@ -184,21 +180,17 @@ app.delete('/:id', async (c) => {
       );
     }
 
-    // Check if there are channels using this provider
-    if (provider._count.channels > 0) {
-      return c.json(
-        {
-          success: false,
-          error: {
-            code: 'PROVIDER_IN_USE',
-            message: `Cannot disconnect provider. ${provider._count.channels} channel(s) are using this provider. Remove channels first.`,
-          },
+    // Delete all channels associated with this provider
+    // (Prisma cascade delete will handle related conversations/messages)
+    if (provider.channels.length > 0) {
+      await prisma.channel.deleteMany({
+        where: {
+          providerId: id,
         },
-        400
-      );
+      });
     }
 
-    // Delete provider
+    // Delete provider (removes credentials, API keys, TwiML App SID, etc.)
     await prisma.provider.delete({
       where: {
         id,
@@ -209,6 +201,7 @@ app.delete('/:id', async (c) => {
       success: true,
       data: {
         message: 'Provider disconnected successfully',
+        channelsDeleted: provider.channels.length,
       },
     });
   } catch (error) {

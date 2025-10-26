@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Mail } from 'lucide-react';
+import { Mail, Trash2 } from 'lucide-react';
 import ConnectTwilioModal from '../../components/modals/ConnectTwilioModal';
 import ImportNumbersModal from '../../components/modals/ImportNumbersModal';
 import SettingsLayout from './SettingsLayout';
@@ -50,6 +50,29 @@ function ProvidersPageContent() {
     setShowImportModal(true);
   };
 
+  const handleDisconnectProvider = async (provider) => {
+    const confirmed = window.confirm(
+      `Disconnect ${provider.type}?\n\n` +
+      'This will:\n' +
+      '- Remove stored credentials\n' +
+      '- Deactivate all imported channels\n' +
+      '- Stop webhook routing\n\n' +
+      'Your Twilio account and phone numbers will NOT be affected.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await api.delete(`/api/v1/providers/${provider.id}`);
+      if (response.data.success) {
+        fetchProviders();
+      }
+    } catch (error) {
+      console.error('Failed to disconnect provider:', error);
+      alert(error.response?.data?.error?.message || 'Failed to disconnect provider');
+    }
+  };
+
   const twilioProvider = providers.find((p) => p.type === 'TWILIO');
 
   if (loading) {
@@ -88,15 +111,17 @@ function ProvidersPageContent() {
                     </p>
                     {twilioProvider ? (
                       <>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400 mt-2">
-                          Connected • {twilioProvider.channelCount} channel{twilioProvider.channelCount !== 1 ? 's' : ''}
-                        </span>
-                        <button
-                          onClick={() => handleOpenImport(twilioProvider)}
-                          className="ml-2 text-sm text-primary-600 dark:text-primary-400 hover:underline"
-                        >
-                          Import numbers
-                        </button>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                            Connected • {twilioProvider.channelCount} channel{twilioProvider.channelCount !== 1 ? 's' : ''}
+                          </span>
+                          <button
+                            onClick={() => handleOpenImport(twilioProvider)}
+                            className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                          >
+                            Import numbers
+                          </button>
+                        </div>
                       </>
                     ) : (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 mt-2">
@@ -105,7 +130,15 @@ function ProvidersPageContent() {
                     )}
                   </div>
                 </div>
-                {!twilioProvider && (
+                {twilioProvider ? (
+                  <button
+                    onClick={() => handleDisconnectProvider(twilioProvider)}
+                    className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                    title="Disconnect provider"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                ) : (
                   <button
                     onClick={() => setShowTwilioModal(true)}
                     className="bg-primary-600 hover:bg-primary-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"

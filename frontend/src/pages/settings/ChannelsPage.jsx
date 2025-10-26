@@ -61,10 +61,18 @@ function ChannelsPageContent() {
       return <span className="text-gray-500">Unassigned</span>;
     }
     if (channel.routingType === 'INBOX') {
-      return <span className="text-green-600 dark:text-green-400">→ Inbox</span>;
+      return (
+        <span className="text-green-600 dark:text-green-400">
+          → {channel.routingTarget?.name || 'Inbox'}
+        </span>
+      );
     }
     if (channel.routingType === 'USER') {
-      return <span className="text-blue-600 dark:text-blue-400">→ User</span>;
+      return (
+        <span className="text-blue-600 dark:text-blue-400">
+          → {channel.routingTarget?.name || 'User'}
+        </span>
+      );
     }
     return <span className="text-gray-500">Unknown</span>;
   };

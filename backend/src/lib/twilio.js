@@ -24,21 +24,12 @@
  */
 export async function validateTwilioCredentials(accountSid, authToken) {
   try {
-    // Make a simple API call to verify credentials
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-        },
-      }
-    );
+    // Use Twilio SDK to validate credentials
+    const twilio = await import('twilio');
+    const client = twilio.default(accountSid, authToken);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Invalid Twilio credentials');
-    }
+    // Fetch account info - will throw if credentials are invalid
+    await client.api.v2010.accounts(accountSid).fetch();
 
     return true;
   } catch (error) {
@@ -57,37 +48,25 @@ export async function validateTwilioCredentials(accountSid, authToken) {
  */
 export async function createTwiMLApp(accountSid, authToken, companyName, baseUrl) {
   try {
+    // Use Twilio SDK to create TwiML App
+    const twilio = await import('twilio');
+    const client = twilio.default(accountSid, authToken);
+
     // Create friendly name with timestamp
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
     const friendlyName = `Customer Service Platform - ${companyName} - ${timestamp}`;
 
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Applications.json`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          FriendlyName: friendlyName,
-          VoiceUrl: `${baseUrl}/webhooks/twiml/voice`,
-          VoiceMethod: 'POST',
-          StatusCallback: `${baseUrl}/webhooks/twiml/status`,
-          StatusCallbackMethod: 'POST',
-        }),
-      }
-    );
+    const twimlApp = await client.applications.create({
+      friendlyName: friendlyName,
+      voiceUrl: `${baseUrl}/webhooks/twiml/voice`,
+      voiceMethod: 'POST',
+      statusCallback: `${baseUrl}/webhooks/twiml/status`,
+      statusCallbackMethod: 'POST'
+    });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to create TwiML App');
-    }
-
-    const data = await response.json();
     return {
-      sid: data.sid,
-      friendlyName: data.friendly_name,
+      sid: twimlApp.sid,
+      friendlyName: twimlApp.friendlyName,
     };
   } catch (error) {
     console.error('Failed to create TwiML App:', error);
@@ -104,45 +83,22 @@ export async function createTwiMLApp(accountSid, authToken, companyName, baseUrl
  */
 export async function createTwilioAPIKey(accountSid, authToken, friendlyName) {
   try {
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Keys.json`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          FriendlyName: friendlyName,
-        }),
-      }
-    );
+    // Use Twilio SDK to create API Key
+    const twilio = await import('twilio');
+    const client = twilio.default(accountSid, authToken);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to create API key');
-    }
+    const apiKey = await client.newKeys.create({
+      friendlyName: friendlyName
+    });
 
-    const data = await response.json();
     return {
-      sid: data.sid,
-      secret: data.secret,
+      sid: apiKey.sid,
+      secret: apiKey.secret,
     };
   } catch (error) {
     console.error('Failed to create API key:', error);
     throw error;
   }
-}
-
-/**
- * Determine handler type from Twilio number config
- */
-function getHandlerType(number) {
-  // Check voice handler
-  if (number.voice_url) return 'webhook';
-  if (number.voice_application_sid) return 'twiml_app';
-  if (number.voice_url && number.voice_url.includes('studio')) return 'studio_flow';
-  return 'none';
 }
 
 /**
@@ -153,28 +109,17 @@ function getHandlerType(number) {
  */
 export async function getTwilioPhoneNumbers(accountSid, authToken) {
   try {
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers.json?PageSize=1000`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-        },
-      }
-    );
+    // Use Twilio SDK to fetch phone numbers
+    const twilio = await import('twilio');
+    const client = twilio.default(accountSid, authToken);
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to fetch phone numbers');
-    }
-
-    const data = await response.json();
+    const numbers = await client.incomingPhoneNumbers.list({ limit: 1000 });
 
     // Map to format with current configuration
-    return data.incoming_phone_numbers.map((number) => ({
+    return numbers.map((number) => ({
       sid: number.sid,
-      phoneNumber: number.phone_number,
-      friendlyName: number.friendly_name,
+      phoneNumber: number.phoneNumber,
+      friendlyName: number.friendlyName,
       capabilities: {
         voice: number.capabilities.voice,
         sms: number.capabilities.sms,
@@ -183,16 +128,16 @@ export async function getTwilioPhoneNumbers(accountSid, authToken) {
       // Current configuration
       currentConfig: {
         voice: {
-          type: number.voice_url ? 'webhook' : (number.voice_application_sid ? 'twiml_app' : 'none'),
-          handler: number.voice_url || number.voice_application_sid || null,
-          method: number.voice_method || null,
+          type: number.voiceUrl ? 'webhook' : (number.voiceApplicationSid ? 'twiml_app' : 'none'),
+          handler: number.voiceUrl || number.voiceApplicationSid || null,
+          method: number.voiceMethod || null,
         },
         sms: {
-          type: number.sms_url ? 'webhook' : (number.sms_application_sid ? 'twiml_app' : 'none'),
-          handler: number.sms_url || number.sms_application_sid || null,
-          method: number.sms_method || null,
+          type: number.smsUrl ? 'webhook' : (number.smsApplicationSid ? 'twiml_app' : 'none'),
+          handler: number.smsUrl || number.smsApplicationSid || null,
+          method: number.smsMethod || null,
         },
-        statusCallback: number.status_callback || null,
+        statusCallback: number.statusCallback || null,
       },
     }));
   } catch (error) {
@@ -220,46 +165,55 @@ export async function configurePhoneNumberWebhooks(
   capabilities = { voice: true, sms: true }
 ) {
   try {
-    const params = {};
+    // Use Twilio SDK to update phone number
+    const twilio = await import('twilio');
+    const client = twilio.default(accountSid, authToken);
+
+    const updateParams = {};
 
     // Only configure voice if requested
     if (capabilities.voice) {
-      params.VoiceUrl = `${baseUrl}/webhooks/inbound/${channelId}`;
-      params.VoiceMethod = 'POST';
-      params.VoiceApplicationSid = ''; // Clear any TwiML App
-      params.VoiceFallbackUrl = ''; // Clear fallback
+      updateParams.voiceUrl = `${baseUrl}/webhooks/inbound/${channelId}`;
+      updateParams.voiceMethod = 'POST';
+      updateParams.voiceApplicationSid = ''; // Clear any TwiML App
+      updateParams.voiceFallbackUrl = ''; // Clear fallback
     }
 
     // Only configure SMS if requested
     if (capabilities.sms) {
-      params.SmsUrl = `${baseUrl}/webhooks/inbound/${channelId}`;
-      params.SmsMethod = 'POST';
-      params.SmsApplicationSid = ''; // Clear any TwiML App
-      params.StatusCallback = `${baseUrl}/webhooks/status/${channelId}`;
-      params.StatusCallbackMethod = 'POST';
+      updateParams.smsUrl = `${baseUrl}/webhooks/inbound/${channelId}`;
+      updateParams.smsMethod = 'POST';
+      updateParams.smsApplicationSid = ''; // Clear any TwiML App
+      updateParams.statusCallback = `${baseUrl}/webhooks/status/${channelId}`;
+      updateParams.statusCallbackMethod = 'POST';
     }
 
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers/${phoneNumberSid}.json`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams(params),
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Failed to configure webhooks');
-    }
+    await client.incomingPhoneNumbers(phoneNumberSid).update(updateParams);
 
     return true;
   } catch (error) {
     console.error('Failed to configure webhooks:', error);
     throw error;
+  }
+}
+
+/**
+ * Validate Twilio webhook request signature
+ * @param {string} authToken - Twilio Auth Token
+ * @param {string} signature - X-Twilio-Signature header value
+ * @param {string} url - Full webhook URL
+ * @param {object} params - Request body parameters
+ * @returns {boolean} - True if signature is valid
+ */
+export function validateWebhookSignature(authToken, signature, url, params) {
+  try {
+    // Import the validateRequest function from twilio SDK
+    // Note: This is synchronous, no need for async
+    const twilioLib = require('twilio');
+    return twilioLib.validateRequest(authToken, signature, url, params);
+  } catch (error) {
+    console.error('Failed to validate webhook signature:', error);
+    return false;
   }
 }
 

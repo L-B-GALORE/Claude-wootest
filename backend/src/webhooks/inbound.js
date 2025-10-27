@@ -20,6 +20,8 @@
 
 import { Hono } from 'hono';
 import { getPrisma } from '../lib/prisma.js';
+import { validateWebhookSignature } from '../lib/twilio.js';
+import { decryptCredentials } from '../lib/encryption.js';
 
 const app = new Hono();
 
@@ -105,6 +107,7 @@ app.post('/:channelId', async (c) => {
       where: { id: channelId },
       include: {
         company: true,
+        provider: true,
       },
     });
 
@@ -115,6 +118,32 @@ app.post('/:channelId', async (c) => {
         200,
         { 'Content-Type': 'text/xml' }
       );
+    }
+
+    // Validate Twilio webhook signature (security)
+    // Only validate in production to avoid issues during development
+    if (c.env.ENVIRONMENT === 'production') {
+      const signature = c.req.header('X-Twilio-Signature');
+      const url = c.req.url;
+
+      if (signature && channel.provider) {
+        const credentials = await decryptCredentials(
+          channel.provider.credentials,
+          c.env.ENCRYPTION_KEY
+        );
+
+        const isValid = validateWebhookSignature(
+          credentials.authToken,
+          signature,
+          url,
+          body
+        );
+
+        if (!isValid) {
+          console.error('Invalid Twilio webhook signature');
+          return c.text('Forbidden', 403);
+        }
+      }
     }
 
     // Determine if this is voice or SMS

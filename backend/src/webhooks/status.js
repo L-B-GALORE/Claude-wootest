@@ -25,6 +25,8 @@
 
 import { Hono } from 'hono';
 import { getPrisma } from '../lib/prisma.js';
+import { validateWebhookSignature } from '../lib/twilio.js';
+import { decryptCredentials } from '../lib/encryption.js';
 
 const app = new Hono();
 
@@ -49,12 +51,41 @@ app.post('/:channelId', async (c) => {
     // Validate channel exists
     const channel = await prisma.channel.findUnique({
       where: { id: channelId },
+      include: {
+        provider: true,
+      },
     });
 
     if (!channel) {
       console.error('Channel not found for status update:', channelId);
       // Return 200 to acknowledge receipt (avoid Twilio retries)
       return c.json({ success: true, message: 'Channel not found' }, 200);
+    }
+
+    // Validate Twilio webhook signature (security)
+    // Only validate in production to avoid issues during development
+    if (c.env.ENVIRONMENT === 'production') {
+      const signature = c.req.header('X-Twilio-Signature');
+      const url = c.req.url;
+
+      if (signature && channel.provider) {
+        const credentials = await decryptCredentials(
+          channel.provider.credentials,
+          c.env.ENCRYPTION_KEY
+        );
+
+        const isValid = validateWebhookSignature(
+          credentials.authToken,
+          signature,
+          url,
+          body
+        );
+
+        if (!isValid) {
+          console.error('Invalid Twilio webhook signature');
+          return c.json({ success: false, error: 'Forbidden' }, 403);
+        }
+      }
     }
 
     // Process call status updates

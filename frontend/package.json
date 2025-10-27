@@ -16,12 +16,11 @@
     "axios": "^1.7.0",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.441.0",
+    "partysocket": "^1.1.6",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-hook-form": "^7.53.0",
     "react-router-dom": "^6.26.0",
-    "socket.io-client": "^4.7.0",
-    "socket.io-parser": "^4.2.4",
     "zod": "^3.23.0"
   },
   "devDependencies": {

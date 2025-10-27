@@ -44,24 +44,30 @@ function CallManager() {
     const userId = 'user-123'; // Temporary hardcoded value
     const companyId = 'company-456'; // Temporary hardcoded value
 
-    console.log('[CallManager] Initializing Socket.IO connection...');
+    console.log('[CallManager] Initializing WebSocket connection...');
 
-    // Connect to Socket.IO
+    // Connect to WebSocket
     socketManager.connect(userId, companyId);
 
-    // Listen for connection events
-    socketManager.on('connected', (data) => {
-      console.log('[CallManager] ✅ Socket.IO connected:', data);
+    // Listen for PartySocket connection events
+    socketManager.on('socket_connected', (data) => {
+      console.log('[CallManager] ✅ WebSocket connected:', data);
+      setError(null);
     });
 
-    socketManager.on('disconnected', (data) => {
-      console.log('[CallManager] ❌ Socket.IO disconnected:', data);
-      setError('Lost connection to server. Trying to reconnect...');
+    socketManager.on('socket_disconnected', (data) => {
+      console.log('[CallManager] ❌ WebSocket disconnected:', data);
+      setError('Lost connection to server. Reconnecting...');
     });
 
-    socketManager.on('error', (data) => {
-      console.error('[CallManager] ⚠️ Socket.IO error:', data);
+    socketManager.on('socket_error', (data) => {
+      console.error('[CallManager] ⚠️ WebSocket error:', data);
       setError(`Connection error: ${data.error}`);
+    });
+
+    // Listen for server confirmation
+    socketManager.on('connected', (data) => {
+      console.log('[CallManager] ✅ Server confirmed connection:', data);
     });
 
     // Listen for incoming call events
@@ -114,14 +120,14 @@ function CallManager() {
   };
 
   const handleSocketIncomingCall = (data) => {
-    console.log('[CallManager] 📞 Socket.IO incoming call event:', data);
+    console.log('[CallManager] 📞 WebSocket incoming call event:', data);
     // The actual Twilio call will come through the Twilio Device event
-    // This Socket.IO event is for notifying other users in the same company
+    // This WebSocket event is for notifying other users in the same company
     // We can use it to show notifications or update UI for other agents
   };
 
   const handleSocketCallAnswered = (data) => {
-    console.log('[CallManager] ✅ Socket.IO call answered event:', data);
+    console.log('[CallManager] ✅ WebSocket call answered event:', data);
     // Another user answered the call, we can dismiss our incoming call UI
     if (currentCall && data.callSid === currentCall.parameters.CallSid) {
       console.log('[CallManager] Call was answered by another user, dismissing');
@@ -131,10 +137,10 @@ function CallManager() {
   };
 
   const handleSocketCallEnded = (data) => {
-    console.log('[CallManager] 📵 Socket.IO call ended event:', data);
+    console.log('[CallManager] 📵 WebSocket call ended event:', data);
     // Call ended, update UI if we're tracking this call
     if (currentCall && data.callSid === currentCall.parameters.CallSid) {
-      console.log('[CallManager] Call ended via Socket.IO');
+      console.log('[CallManager] Call ended via WebSocket');
       setCallState('idle');
       setCurrentCall(null);
     }

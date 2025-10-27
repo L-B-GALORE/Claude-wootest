@@ -1,69 +1,45 @@
 /**
- * Socket.IO Manager Service
+ * WebSocket Manager Service (using PartySocket)
  *
- * Purpose: Manage Socket.IO connection for real-time communication with backend
+ * Purpose: Manage WebSocket connection for real-time communication with backend
  *
  * Features:
- * - Auto-connect/reconnect with authentication
- * - Event-based communication (Socket.IO protocol over native WebSocket)
- * - Room support
- * - Presence tracking
+ * - Auto-reconnection built-in (no manual code needed!)
+ * - Simple event-based communication
+ * - Buffering when disconnected
  * - Comprehensive debugging
  *
- * Implementation:
- * - Uses native WebSocket with Socket.IO protocol encoding/decoding
- * - Compatible with Cloudflare Workers Durable Objects
- * - Manual reconnection logic with exponential backoff
- *
- * Events emitted by this service:
- * - 'connected' - Connected to server
- * - 'disconnected' - Disconnected from server
- * - 'error' - Connection error
- *
  * Events from server:
+ * - 'connected' - Connected to server
  * - 'incoming_call' - New incoming call
  * - 'call_answered' - Call was answered
  * - 'call_ended' - Call ended
  * - 'new_message' - New SMS/email
- * - 'presence_update' - User status changed
  * - 'user_joined' - User connected
  * - 'user_left' - User disconnected
  * - 'presence_snapshot' - Current online users
  */
 
-import { Decoder, Encoder } from 'socket.io-parser';
+import PartySocket from 'partysocket';
 
 class SocketManager {
   constructor() {
-    this.ws = null;
-    this.encoder = new Encoder();
-    this.decoder = new Decoder();
+    this.socket = null;
     this.connected = false;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.reconnectTimer = null;
-    this.reconnectDelay = 1000; // Start with 1 second
     this.eventHandlers = {};
     this.userId = null;
     this.companyId = null;
 
     console.log('[SocketManager] Initialized');
-
-    // Setup decoder to handle incoming packets
-    this.decoder.on('decoded', (packet) => {
-      console.log('[SocketManager] Decoded Socket.IO packet:', packet);
-      this.handleSocketIOPacket(packet);
-    });
   }
 
   /**
    * Connect to WebSocket server
    * @param {string} userId - User ID
    * @param {string} companyId - Company ID
-   * @param {string} token - JWT token (optional, for future auth)
    */
-  connect(userId, companyId, token = null) {
-    if (this.ws && this.connected) {
+  connect(userId, companyId) {
+    if (this.socket && this.connected) {
       console.log('[SocketManager] Already connected');
       return;
     }
@@ -80,190 +56,82 @@ class SocketManager {
 
     console.log(`[SocketManager] WebSocket URL: ${socketUrl}`);
 
-    try {
-      // Create native WebSocket connection
-      this.ws = new WebSocket(socketUrl);
-
-      this.ws.onopen = () => {
-        console.log('[SocketManager] ✅ WebSocket connected');
-        this.connected = true;
-        this.reconnectAttempts = 0;
-        this.reconnectDelay = 1000; // Reset backoff
-        this.triggerEvent('connected', { userId: this.userId, companyId: this.companyId });
-      };
-
-      this.ws.onmessage = (event) => {
-        console.log('[SocketManager] Raw message received:', event.data);
-        this.handleRawMessage(event.data);
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('[SocketManager] ⚠️ WebSocket error:', error);
-        this.triggerEvent('error', { error: 'WebSocket error', attempts: this.reconnectAttempts });
-      };
-
-      this.ws.onclose = (event) => {
-        console.log(`[SocketManager] ❌ WebSocket closed (code: ${event.code}, reason: ${event.reason})`);
-        this.connected = false;
-        this.triggerEvent('disconnected', { code: event.code, reason: event.reason });
-
-        // Attempt reconnection
-        this.attemptReconnect();
-      };
-    } catch (error) {
-      console.error('[SocketManager] Failed to create WebSocket:', error);
-      this.triggerEvent('error', { error: error.message });
-      this.attemptReconnect();
-    }
-  }
-
-  /**
-   * Attempt to reconnect with exponential backoff
-   */
-  attemptReconnect() {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-    }
-
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[SocketManager] ❌ Max reconnection attempts reached');
-      this.triggerEvent('error', { error: 'Max reconnection attempts reached' });
-      return;
-    }
-
-    this.reconnectAttempts++;
-    console.log(`[SocketManager] 🔄 Attempting to reconnect in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-
-    this.reconnectTimer = setTimeout(() => {
-      console.log(`[SocketManager] 🔄 Reconnecting now... (attempt ${this.reconnectAttempts})`);
-      this.connect(this.userId, this.companyId);
-    }, this.reconnectDelay);
-
-    // Exponential backoff: double the delay for next attempt
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10000); // Max 10 seconds
-  }
-
-  /**
-   * Handle raw WebSocket message
-   */
-  handleRawMessage(data) {
-    try {
-      if (typeof data === 'string') {
-        const firstChar = data.charAt(0);
-
-        // Handle Engine.IO ping (type 2)
-        if (firstChar === '2') {
-          console.log('[SocketManager] 📡 Received ping, sending pong');
-          this.ws.send('3'); // Send pong
-          return;
-        }
-
-        // Handle Engine.IO pong (type 3)
-        if (firstChar === '3') {
-          console.log('[SocketManager] 📡 Received pong');
-          return;
-        }
-
-        // Handle Engine.IO message (type 4) - contains Socket.IO packet
-        if (firstChar === '4') {
-          const socketIOData = data.substring(1);
-          console.log('[SocketManager] 📦 Received Socket.IO packet:', socketIOData);
-          this.decoder.add(socketIOData);
-          return;
-        }
-
-        // Try parsing as plain JSON (legacy support)
-        try {
-          const message = JSON.parse(data);
-          console.log('[SocketManager] Received legacy JSON message:', message);
-          // Trigger as event if it has a type
-          if (message.type) {
-            this.triggerEvent(message.type, message);
-          }
-        } catch (parseError) {
-          console.warn('[SocketManager] Unknown message format:', data);
-        }
-      }
-    } catch (error) {
-      console.error('[SocketManager] Error handling raw message:', error);
-    }
-  }
-
-  /**
-   * Handle decoded Socket.IO packet
-   */
-  handleSocketIOPacket(packet) {
-    try {
-      switch (packet.type) {
-        case 0: // CONNECT
-          console.log('[SocketManager] ✅ Socket.IO CONNECT packet received:', packet.data);
-          break;
-
-        case 1: // DISCONNECT
-          console.log('[SocketManager] Socket.IO DISCONNECT packet received');
-          break;
-
-        case 2: // EVENT
-          // packet.data is an array: [eventName, ...args]
-          const [eventName, data] = packet.data;
-          console.log(`[SocketManager] 📨 Event '${eventName}' received:`, data);
-
-          // Trigger event handlers
-          this.triggerEvent(eventName, data);
-          break;
-
-        case 3: // ACK
-          console.log('[SocketManager] Socket.IO ACK packet received:', packet);
-          break;
-
-        case 4: // CONNECT_ERROR
-          console.error('[SocketManager] Socket.IO CONNECT_ERROR:', packet.data);
-          break;
-
-        default:
-          console.warn('[SocketManager] Unknown Socket.IO packet type:', packet.type);
-      }
-    } catch (error) {
-      console.error('[SocketManager] Error handling Socket.IO packet:', error);
-    }
-  }
-
-  /**
-   * Emit event to server
-   * @param {string} eventName - Event name
-   * @param {object} data - Event data
-   */
-  emit(eventName, data = {}) {
-    if (!this.ws || !this.connected) {
-      console.warn(`[SocketManager] Cannot emit '${eventName}', not connected`);
-      return;
-    }
-
-    console.log(`[SocketManager] 📤 Emitting '${eventName}':`, data);
-
-    // Create Socket.IO EVENT packet (type 2)
-    const packet = {
-      type: 2, // EVENT
-      nsp: '/',
-      data: [eventName, data],
-    };
-
-    // Encode the packet
-    this.encoder.encode(packet, (encodedPackets) => {
-      encodedPackets.forEach((encodedPacket) => {
-        // Prepend Engine.IO message type (4)
-        const message = '4' + encodedPacket;
-        console.log(`[SocketManager] 📤 Sending encoded packet:`, message);
-        this.ws.send(message);
-      });
+    // Create PartySocket connection (auto-reconnection built-in!)
+    this.socket = new PartySocket(socketUrl, {
+      // Optional configuration
+      maxReconnectionDelay: 10000, // Max 10 seconds between reconnects
+      minReconnectionDelay: 1000,  // Min 1 second
+      reconnectionDelayGrowFactor: 1.3,
+      maxEnqueuedMessages: 100, // Buffer messages when disconnected
+      debug: false, // Set to true for PartySocket internal logs
     });
+
+    this.setupEventListeners();
+  }
+
+  /**
+   * Setup event listeners
+   */
+  setupEventListeners() {
+    if (!this.socket) return;
+
+    console.log('[SocketManager] Setting up event listeners');
+
+    // Connection events
+    this.socket.addEventListener('open', () => {
+      console.log('[SocketManager] ✅ WebSocket connected');
+      this.connected = true;
+      this.triggerEvent('socket_connected', { userId: this.userId, companyId: this.companyId });
+    });
+
+    this.socket.addEventListener('close', (event) => {
+      console.log(`[SocketManager] ❌ WebSocket closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
+      this.connected = false;
+      this.triggerEvent('socket_disconnected', { code: event.code, reason: event.reason });
+    });
+
+    this.socket.addEventListener('error', (error) => {
+      console.error('[SocketManager] ⚠️ WebSocket error:', error);
+      this.triggerEvent('socket_error', { error: error.message || 'WebSocket error' });
+    });
+
+    // Message events
+    this.socket.addEventListener('message', (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log(`[SocketManager] 📨 Received message type '${message.type}':`, message.data || {});
+
+        // Trigger event handlers
+        this.triggerEvent(message.type, message.data || {});
+      } catch (error) {
+        console.error('[SocketManager] Error parsing message:', error);
+      }
+    });
+  }
+
+  /**
+   * Send message to server
+   * @param {string} type - Message type
+   * @param {object} data - Message data
+   */
+  send(type, data = {}) {
+    if (!this.socket) {
+      console.warn(`[SocketManager] Cannot send message '${type}', not connected`);
+      return;
+    }
+
+    const message = { type, data };
+    console.log(`[SocketManager] 📤 Sending message type '${type}':`, data);
+
+    // PartySocket handles buffering if disconnected!
+    this.socket.send(JSON.stringify(message));
   }
 
   /**
    * Send heartbeat to server
    */
   sendHeartbeat() {
-    this.emit('heartbeat', {
+    this.send('heartbeat', {
       userId: this.userId,
       timestamp: new Date().toISOString(),
     });
@@ -275,7 +143,7 @@ class SocketManager {
    */
   acceptCall(callSid) {
     console.log(`[SocketManager] Accepting call: ${callSid}`);
-    this.emit('accept_call', { callSid });
+    this.send('accept_call', { callSid });
   }
 
   /**
@@ -284,7 +152,7 @@ class SocketManager {
    */
   rejectCall(callSid) {
     console.log(`[SocketManager] Rejecting call: ${callSid}`);
-    this.emit('reject_call', { callSid });
+    this.send('reject_call', { callSid });
   }
 
   /**
@@ -293,7 +161,7 @@ class SocketManager {
    */
   joinRoom(roomName) {
     console.log(`[SocketManager] Joining room: ${roomName}`);
-    this.emit('join_room', { room: roomName });
+    this.send('join_room', { room: roomName });
   }
 
   /**
@@ -302,7 +170,7 @@ class SocketManager {
    */
   leaveRoom(roomName) {
     console.log(`[SocketManager] Leaving room: ${roomName}`);
-    this.emit('leave_room', { room: roomName });
+    this.send('leave_room', { room: roomName });
   }
 
   /**
@@ -352,25 +220,14 @@ class SocketManager {
    * Disconnect from server
    */
   disconnect() {
-    console.log('[SocketManager] Disconnecting...');
-
-    // Clear reconnect timer
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+    if (this.socket) {
+      console.log('[SocketManager] Disconnecting...');
+      this.socket.close();
+      this.socket = null;
+      this.connected = false;
+      this.userId = null;
+      this.companyId = null;
     }
-
-    // Close WebSocket
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-
-    this.connected = false;
-    this.userId = null;
-    this.companyId = null;
-    this.reconnectAttempts = 0;
-    this.reconnectDelay = 1000;
   }
 
   /**
@@ -378,7 +235,7 @@ class SocketManager {
    * @returns {boolean}
    */
   isConnected() {
-    return this.connected && this.ws && this.ws.readyState === WebSocket.OPEN;
+    return this.connected && this.socket && this.socket.readyState === WebSocket.OPEN;
   }
 
   /**
@@ -390,8 +247,7 @@ class SocketManager {
       connected: this.connected,
       userId: this.userId,
       companyId: this.companyId,
-      readyState: this.ws?.readyState,
-      reconnectAttempts: this.reconnectAttempts,
+      readyState: this.socket?.readyState,
     };
   }
 }

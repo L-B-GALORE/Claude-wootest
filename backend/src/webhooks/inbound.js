@@ -27,48 +27,61 @@ const app = new Hono();
  * Generate TwiML response for RING_ALL strategy
  * Rings all logged-in users' browsers simultaneously
  */
-function generateRingAllTwiML(memberIdentities) {
-  const clientDialXml = memberIdentities
-    .map((identity) => `    <Client>${identity}</Client>`)
-    .join('\n');
+async function generateRingAllTwiML(memberIdentities) {
+  const twilio = await import('twilio');
+  const VoiceResponse = twilio.default.twiml.VoiceResponse;
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Dial timeout="30">
-${clientDialXml}
-  </Dial>
-  <Say>Sorry, no one is available to take your call. Please try again later.</Say>
-</Response>`;
+  const response = new VoiceResponse();
+  const dial = response.dial({ timeout: 30 });
+
+  // Add each member as a client to dial
+  memberIdentities.forEach((identity) => {
+    dial.client(identity);
+  });
+
+  // If no one answers, play a message
+  response.say('Sorry, no one is available to take your call. Please try again later.');
+
+  return response.toString();
 }
 
 /**
  * Generate TwiML response for voicemail (placeholder)
  */
-function generateVoicemailTwiML() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say>This feature is coming soon. Please call back later.</Say>
-</Response>`;
+async function generateVoicemailTwiML() {
+  const twilio = await import('twilio');
+  const VoiceResponse = twilio.default.twiml.VoiceResponse;
+
+  const response = new VoiceResponse();
+  response.say('This feature is coming soon. Please call back later.');
+
+  return response.toString();
 }
 
 /**
  * Generate fallback TwiML for unrouted calls
  */
-function generateUnroutedTwiML() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say>This phone number is not configured. Please contact support.</Say>
-</Response>`;
+async function generateUnroutedTwiML() {
+  const twilio = await import('twilio');
+  const VoiceResponse = twilio.default.twiml.VoiceResponse;
+
+  const response = new VoiceResponse();
+  response.say('This phone number is not configured. Please contact support.');
+
+  return response.toString();
 }
 
 /**
  * Generate TwiML response for SMS
  */
-function generateSMSTwiML() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Message>Thank you for your message. We will respond shortly.</Message>
-</Response>`;
+async function generateSMSTwiML() {
+  const twilio = await import('twilio');
+  const MessagingResponse = twilio.default.twiml.MessagingResponse;
+
+  const response = new MessagingResponse();
+  response.message('Thank you for your message. We will respond shortly.');
+
+  return response.toString();
 }
 
 app.post('/:channelId', async (c) => {
@@ -98,7 +111,7 @@ app.post('/:channelId', async (c) => {
     if (!channel) {
       console.error('Channel not found:', channelId);
       return c.text(
-        generateUnroutedTwiML(),
+        await generateUnroutedTwiML(),
         200,
         { 'Content-Type': 'text/xml' }
       );
@@ -111,7 +124,7 @@ app.post('/:channelId', async (c) => {
     if (isVoice) {
       // Handle voice call routing
       if (channel.routingType === 'UNASSIGNED') {
-        return c.text(generateUnroutedTwiML(), 200, {
+        return c.text(await generateUnroutedTwiML(), 200, {
           'Content-Type': 'text/xml',
         });
       }
@@ -136,7 +149,7 @@ app.post('/:channelId', async (c) => {
         });
 
         if (!inbox) {
-          return c.text(generateUnroutedTwiML(), 200, {
+          return c.text(await generateUnroutedTwiML(), 200, {
             'Content-Type': 'text/xml',
           });
         }
@@ -167,12 +180,12 @@ app.post('/:channelId', async (c) => {
           console.log('[Inbound] Ringing members:', memberIdentities);
 
           // Generate TwiML to ring all members
-          const twiml = generateRingAllTwiML(memberIdentities);
+          const twiml = await generateRingAllTwiML(memberIdentities);
           console.log('[Inbound] Generated TwiML:', twiml);
           return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
         } else if (strategy.strategyType === 'NOTIFY_ALL') {
           // Voicemail strategy (not implemented yet)
-          return c.text(generateVoicemailTwiML(), 200, {
+          return c.text(await generateVoicemailTwiML(), 200, {
             'Content-Type': 'text/xml',
           });
         } else {
@@ -187,18 +200,18 @@ app.post('/:channelId', async (c) => {
 
       // USER routing (private line)
       if (channel.routingType === 'USER' && channel.routingTargetId) {
-        const twiml = generateRingAllTwiML([channel.routingTargetId]);
+        const twiml = await generateRingAllTwiML([channel.routingTargetId]);
         return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
       }
 
       // Fallback
-      return c.text(generateUnroutedTwiML(), 200, {
+      return c.text(await generateUnroutedTwiML(), 200, {
         'Content-Type': 'text/xml',
       });
     } else if (isSMS) {
       // TODO: Implement SMS routing to inbox
       // TODO: Create conversation and message records
-      const twiml = generateSMSTwiML();
+      const twiml = await generateSMSTwiML();
       return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
     } else {
       // Unknown webhook type

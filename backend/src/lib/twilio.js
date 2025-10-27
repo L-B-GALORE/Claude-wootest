@@ -282,39 +282,28 @@ export async function generateAccessToken(
   friendlyName
 ) {
   try {
-    const { SignJWT } = await import('jose');
+    // Use Twilio's native JWT classes (same as reference prototype)
+    const twilio = await import('twilio');
+    const AccessToken = twilio.default.jwt.AccessToken;
+    const VoiceGrant = AccessToken.VoiceGrant;
 
-    const secret = new TextEncoder().encode(apiKeySecret);
-    const now = Math.floor(Date.now() / 1000);
+    // Create access token with identity
+    const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
+      identity: identity,
+      ttl: 3600 // 1 hour
+    });
 
-    // Create Voice Grant with TwiML App SID
-    const grants = {
-      voice: {
-        incoming: {
-          allow: true,
-        },
-        outgoing: {
-          application_sid: twimlAppSid, // REQUIRED: TwiML App for routing
-        },
-      },
-    };
+    // Create voice grant
+    const voiceGrant = new VoiceGrant({
+      outgoingApplicationSid: twimlAppSid,
+      incomingAllow: true
+    });
 
-    // Generate JWT token with identity
-    const token = await new SignJWT({
-      jti: `${apiKeySid}-${now}`,
-      iss: apiKeySid,
-      sub: accountSid,
-      nbf: now,
-      exp: now + 3600, // 1 hour expiration
-      grants: grants,
-      identity: identity, // CRITICAL: Must match <Client> name in TwiML
-    })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT', cty: 'twilio-fpa;v=1' })
-      .setIssuedAt(now)
-      .sign(secret);
+    // Add grant to token
+    token.addGrant(voiceGrant);
 
     console.log(`[Twilio] Generated access token for identity: ${identity}`);
-    return token;
+    return token.toJwt();
   } catch (error) {
     console.error('Failed to generate access token:', error);
     throw error;

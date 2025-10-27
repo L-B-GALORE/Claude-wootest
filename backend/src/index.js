@@ -83,6 +83,34 @@ app.get('/health', (c) => {
 // Webhook routes (no authentication - called by external services like Twilio)
 app.route('/webhooks', webhookRoutes);
 
+// WebSocket route for real-time communication
+app.get('/ws/company/:companyId', async (c) => {
+  const { companyId } = c.req.param();
+
+  console.log('[WebSocket] Connection request for company:', companyId);
+
+  // Check if this is a WebSocket upgrade request
+  const upgradeHeader = c.req.header('Upgrade');
+  if (upgradeHeader !== 'websocket') {
+    console.error('[WebSocket] Not a WebSocket upgrade request');
+    return c.json({ error: 'Expected WebSocket upgrade' }, 426);
+  }
+
+  try {
+    // Get the CompanyRoom Durable Object for this company
+    const durableObjectId = c.env.COMPANY_ROOM.idFromName(companyId);
+    const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+    console.log('[WebSocket] Forwarding request to CompanyRoom Durable Object');
+
+    // Forward the request to the Durable Object
+    return companyRoom.fetch(c.req.raw);
+  } catch (error) {
+    console.error('[WebSocket] Error connecting to CompanyRoom:', error);
+    return c.json({ error: 'Failed to establish WebSocket connection' }, 500);
+  }
+});
+
 // API v1 routes
 const api = new Hono();
 

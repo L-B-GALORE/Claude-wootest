@@ -151,6 +151,40 @@ class TwilioDeviceService {
   }
 
   /**
+   * Make outbound call
+   * @param {string} phoneNumber - Destination phone number
+   * @param {string} callerIdNumber - Caller ID to use (must be user's authorized number)
+   * @returns {Promise<Call>} - The call object
+   */
+  async makeCall(phoneNumber, callerIdNumber) {
+    if (!this.device) {
+      throw new Error('Device not initialized');
+    }
+
+    console.log('[Twilio Device] Making outbound call:', { phoneNumber, callerIdNumber });
+
+    try {
+      // Connect to destination number with caller ID
+      const call = await this.device.connect({
+        params: {
+          To: phoneNumber,
+          From: callerIdNumber,
+        },
+      });
+
+      this.currentCall = call;
+      this.setupCallListeners(call);
+
+      console.log('[Twilio Device] Outbound call initiated');
+
+      return call;
+    } catch (error) {
+      console.error('[Twilio Device] Failed to make call:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Answer incoming call
    */
   acceptCall() {

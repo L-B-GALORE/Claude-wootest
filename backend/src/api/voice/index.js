@@ -5,7 +5,7 @@
  *
  * Routes:
  * - POST /voice/token - Generate Twilio access token for browser calls
- * - POST /voice/dial - Initiate outbound call
+ * - GET /voice/caller-ids - Get available caller IDs for outbound calls
  *
  * BEFORE MODIFYING:
  * - Tokens should expire appropriately
@@ -16,8 +16,12 @@ import { Hono } from 'hono';
 import { getPrisma } from '../../lib/prisma.js';
 import { generateAccessToken } from '../../lib/twilio.js';
 import { decryptCredentials } from '../../lib/encryption.js';
+import callerIdsRouter from './caller-ids.js';
 
 const app = new Hono();
+
+// Mount caller IDs router
+app.route('/caller-ids', callerIdsRouter);
 
 // Generate Twilio access token for browser SDK
 app.post('/token', async (c) => {

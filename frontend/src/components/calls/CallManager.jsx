@@ -5,21 +5,26 @@
  *
  * Features:
  * - Initialize Twilio Device on mount
- * - Handle incoming calls
- * - Manage call state (idle, ringing, active)
- * - Render appropriate UI (IncomingCallCard or ActiveCallCard)
+ * - Handle incoming calls (inbound)
+ * - Handle outgoing calls (outbound)
+ * - Manage call state (idle, dialing, ringing, active)
+ * - Render appropriate UI (OutboundDialer, IncomingCallCard, or ActiveCallCard)
+ * - Reusable components for both inbound and outbound scenarios
  */
 
 import { useState, useEffect } from 'react';
+import { Phone } from 'lucide-react';
 import twilioDevice from '../../services/twilio-device';
 import IncomingCallCard from './IncomingCallCard';
 import ActiveCallCard from './ActiveCallCard';
+import OutboundDialer from './OutboundDialer';
 
 function CallManager() {
-  const [callState, setCallState] = useState('idle'); // idle, ringing, active
+  const [callState, setCallState] = useState('idle'); // idle, dialing, ringing, active
   const [currentCall, setCurrentCall] = useState(null);
   const [deviceReady, setDeviceReady] = useState(false);
   const [error, setError] = useState(null);
+  const [showDialer, setShowDialer] = useState(false);
 
   useEffect(() => {
     initializeDevice();
@@ -110,10 +115,46 @@ function CallManager() {
     twilioDevice.sendDigit(digit);
   };
 
-  // Don't render anything if idle
-  if (callState === 'idle') {
-    return null;
-  }
+  const handleMakeCall = async (phoneNumber, callerIdNumber) => {
+    console.log('[CallManager] Making outbound call:', { phoneNumber, callerIdNumber });
+
+    try {
+      setShowDialer(false);
+      setCallState('dialing');
+
+      // Make outbound call
+      const call = await twilioDevice.makeCall(phoneNumber, callerIdNumber);
+      setCurrentCall(call);
+
+      // Setup call event listeners (same as inbound)
+      call.on('accept', () => {
+        console.log('[CallManager] Outbound call accepted');
+        setCallState('active');
+      });
+
+      call.on('disconnect', () => {
+        console.log('[CallManager] Outbound call disconnected');
+        setCallState('idle');
+        setCurrentCall(null);
+      });
+
+      call.on('reject', () => {
+        console.log('[CallManager] Outbound call rejected');
+        setCallState('idle');
+        setCurrentCall(null);
+      });
+
+      call.on('cancel', () => {
+        console.log('[CallManager] Outbound call cancelled');
+        setCallState('idle');
+        setCurrentCall(null);
+      });
+    } catch (err) {
+      console.error('[CallManager] Failed to make call:', err);
+      setError('Failed to make call. Please try again.');
+      setCallState('idle');
+    }
+  };
 
   return (
     <>
@@ -124,7 +165,26 @@ function CallManager() {
         </div>
       )}
 
-      {/* Incoming call */}
+      {/* Floating action button to make calls - only show when idle */}
+      {callState === 'idle' && deviceReady && (
+        <button
+          onClick={() => setShowDialer(true)}
+          className="fixed bottom-6 right-6 z-40 bg-green-600 text-white p-4 rounded-full shadow-lg hover:bg-green-700 transition-colors"
+          title="Make a call"
+        >
+          <Phone className="w-6 h-6" />
+        </button>
+      )}
+
+      {/* Outbound dialer */}
+      {showDialer && (
+        <OutboundDialer
+          onCall={handleMakeCall}
+          onCancel={() => setShowDialer(false)}
+        />
+      )}
+
+      {/* Incoming call - only for inbound calls */}
       {callState === 'ringing' && currentCall && (
         <IncomingCallCard
           call={currentCall}
@@ -133,8 +193,8 @@ function CallManager() {
         />
       )}
 
-      {/* Active call */}
-      {callState === 'active' && currentCall && (
+      {/* Active call - shared component for BOTH inbound and outbound */}
+      {(callState === 'active' || callState === 'dialing') && currentCall && (
         <ActiveCallCard
           call={currentCall}
           onHangup={handleHangup}

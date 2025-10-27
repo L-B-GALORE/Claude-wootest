@@ -53,6 +53,7 @@ app.post('/:channelId', async (c) => {
       where: { id: channelId },
       include: {
         provider: true,
+        company: true,
       },
     });
 
@@ -91,15 +92,60 @@ app.post('/:channelId', async (c) => {
     // Process call status updates
     if (body.CallSid) {
       // TODO: Update VoiceCall record with status
-      // TODO: Trigger WebSocket event for call status change
       // TODO: Update conversation status based on call completion
 
-      console.log('Call status update:', {
+      console.log('[Status] Call status update:', {
         callSid: body.CallSid,
         status: body.CallStatus,
         duration: body.CallDuration,
         recordingUrl: body.RecordingUrl,
       });
+
+      // Broadcast call status updates via Socket.IO
+      try {
+        const callStatus = body.CallStatus;
+
+        // Only broadcast significant status changes
+        if (['in-progress', 'completed', 'failed', 'no-answer', 'busy', 'canceled'].includes(callStatus)) {
+          console.log(`[Status] Broadcasting call status '${callStatus}' via Socket.IO to company:`, channel.company.id);
+
+          // Get CompanyRoom Durable Object
+          const durableObjectId = c.env.COMPANY_ROOM.idFromName(channel.company.id);
+          const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+          // Determine which event to broadcast
+          let eventName = 'call_status_update';
+          if (callStatus === 'in-progress') {
+            eventName = 'call_answered';
+          } else if (['completed', 'failed', 'no-answer', 'busy', 'canceled'].includes(callStatus)) {
+            eventName = 'call_ended';
+          }
+
+          // Broadcast to all users in the company
+          await companyRoom.fetch('https://do.internal/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: eventName,
+              data: {
+                callSid: body.CallSid,
+                status: callStatus,
+                duration: body.CallDuration,
+                recordingUrl: body.RecordingUrl,
+                from: body.From,
+                to: body.To,
+                timestamp: new Date().toISOString(),
+              },
+              // Broadcast to all users (they can filter on their end)
+            }),
+          });
+
+          console.log(`[Status] ✅ Broadcasted '${eventName}' for call ${body.CallSid}`);
+        }
+      } catch (broadcastError) {
+        console.error('[Status] ⚠️ Failed to broadcast via Socket.IO:', broadcastError);
+        // Continue anyway
+      }
     }
 
     // Process message status updates

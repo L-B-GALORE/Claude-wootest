@@ -15,6 +15,7 @@
 import { useState, useEffect } from 'react';
 import { Phone } from 'lucide-react';
 import twilioDevice from '../../services/twilio-device';
+import socketManager from '../../services/socket';
 import IncomingCallCard from './IncomingCallCard';
 import ActiveCallCard from './ActiveCallCard';
 import OutboundDialer from './OutboundDialer';
@@ -28,12 +29,73 @@ function CallManager() {
 
   useEffect(() => {
     initializeDevice();
+    initializeSocket();
 
     return () => {
       // Cleanup on unmount
+      console.log('[CallManager] Cleaning up...');
       twilioDevice.destroy();
+      socketManager.disconnect();
     };
   }, []);
+
+  const initializeSocket = () => {
+    // TODO: Get actual userId and companyId from auth context
+    const userId = 'user-123'; // Temporary hardcoded value
+    const companyId = 'company-456'; // Temporary hardcoded value
+
+    console.log('[CallManager] Initializing Socket.IO connection...');
+
+    // Connect to Socket.IO
+    socketManager.connect(userId, companyId);
+
+    // Listen for connection events
+    socketManager.on('connected', (data) => {
+      console.log('[CallManager] ✅ Socket.IO connected:', data);
+    });
+
+    socketManager.on('disconnected', (data) => {
+      console.log('[CallManager] ❌ Socket.IO disconnected:', data);
+      setError('Lost connection to server. Trying to reconnect...');
+    });
+
+    socketManager.on('error', (data) => {
+      console.error('[CallManager] ⚠️ Socket.IO error:', data);
+      setError(`Connection error: ${data.error}`);
+    });
+
+    // Listen for incoming call events
+    socketManager.on('incoming_call', handleSocketIncomingCall);
+
+    // Listen for call status events
+    socketManager.on('call_answered', handleSocketCallAnswered);
+    socketManager.on('call_ended', handleSocketCallEnded);
+
+    // Listen for presence events
+    socketManager.on('presence_snapshot', (data) => {
+      console.log('[CallManager] 📸 Presence snapshot:', data);
+    });
+
+    socketManager.on('user_joined', (data) => {
+      console.log('[CallManager] 👋 User joined:', data);
+    });
+
+    socketManager.on('user_left', (data) => {
+      console.log('[CallManager] 👋 User left:', data);
+    });
+
+    // Start heartbeat timer
+    const heartbeatInterval = setInterval(() => {
+      if (socketManager.isConnected()) {
+        socketManager.sendHeartbeat();
+      }
+    }, 30000); // Every 30 seconds
+
+    // Cleanup interval on unmount
+    return () => {
+      clearInterval(heartbeatInterval);
+    };
+  };
 
   const initializeDevice = async () => {
     try {
@@ -51,8 +113,35 @@ function CallManager() {
     }
   };
 
+  const handleSocketIncomingCall = (data) => {
+    console.log('[CallManager] 📞 Socket.IO incoming call event:', data);
+    // The actual Twilio call will come through the Twilio Device event
+    // This Socket.IO event is for notifying other users in the same company
+    // We can use it to show notifications or update UI for other agents
+  };
+
+  const handleSocketCallAnswered = (data) => {
+    console.log('[CallManager] ✅ Socket.IO call answered event:', data);
+    // Another user answered the call, we can dismiss our incoming call UI
+    if (currentCall && data.callSid === currentCall.parameters.CallSid) {
+      console.log('[CallManager] Call was answered by another user, dismissing');
+      setCallState('idle');
+      setCurrentCall(null);
+    }
+  };
+
+  const handleSocketCallEnded = (data) => {
+    console.log('[CallManager] 📵 Socket.IO call ended event:', data);
+    // Call ended, update UI if we're tracking this call
+    if (currentCall && data.callSid === currentCall.parameters.CallSid) {
+      console.log('[CallManager] Call ended via Socket.IO');
+      setCallState('idle');
+      setCurrentCall(null);
+    }
+  };
+
   const handleIncomingCall = (call) => {
-    console.log('[CallManager] Incoming call', call);
+    console.log('[CallManager] Incoming call from Twilio Device', call);
     setCurrentCall(call);
     setCallState('ringing');
 

@@ -208,6 +208,39 @@ app.post('/:channelId', async (c) => {
 
           console.log('[Inbound] Ringing members:', memberIdentities);
 
+          // Broadcast incoming call to all inbox members via Socket.IO
+          try {
+            console.log('[Inbound] Broadcasting incoming call via Socket.IO to company:', channel.company.id);
+
+            // Get CompanyRoom Durable Object
+            const durableObjectId = c.env.COMPANY_ROOM.idFromName(channel.company.id);
+            const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+            // Broadcast to inbox members
+            await companyRoom.fetch('https://do.internal/broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                event: 'incoming_call',
+                data: {
+                  callSid: body.CallSid,
+                  from: body.From,
+                  to: body.To,
+                  channelId: channel.id,
+                  inboxId: inbox.id,
+                  inboxName: inbox.name,
+                  timestamp: new Date().toISOString(),
+                },
+                targetUsers: memberIdentities, // Send to specific inbox members
+              }),
+            });
+
+            console.log('[Inbound] ✅ Broadcasted incoming call to', memberIdentities.length, 'members');
+          } catch (broadcastError) {
+            console.error('[Inbound] ⚠️ Failed to broadcast via Socket.IO:', broadcastError);
+            // Continue anyway - TwiML will still ring the clients
+          }
+
           // Generate TwiML to ring all members
           const twiml = await generateRingAllTwiML(memberIdentities);
           console.log('[Inbound] Generated TwiML:', twiml);

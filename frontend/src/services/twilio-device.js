@@ -31,6 +31,16 @@ class TwilioDeviceService {
    */
   async initialize() {
     try {
+      // CRITICAL: Request microphone permissions FIRST
+      console.log('[Twilio Device] Requesting microphone permissions...');
+      try {
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('[Twilio Device] Microphone access granted');
+      } catch (permError) {
+        console.error('[Twilio Device] Microphone permission denied:', permError);
+        throw new Error('Microphone access is required. Please allow microphone permissions and refresh.');
+      }
+
       // Get access token from backend
       const response = await api.post('/api/v1/voice/token');
 
@@ -40,14 +50,17 @@ class TwilioDeviceService {
 
       const { token } = response.data.data;
 
+      console.log('[Twilio Device] Creating Device instance...');
+
       // Create Device instance
       this.device = new Device(token, {
         logLevel: 'debug',
-        // Remove codecPreferences - let Twilio auto-select
         edge: 'ashburn',
       });
 
       this.setupEventListeners();
+
+      console.log('[Twilio Device] Registering device...');
 
       // Register the device
       await this.device.register();

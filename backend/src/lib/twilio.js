@@ -268,6 +268,7 @@ export async function configurePhoneNumberWebhooks(
  * @param {string} accountSid - Twilio Account SID
  * @param {string} apiKeySid - API Key SID for access tokens
  * @param {string} apiKeySecret - API Key Secret
+ * @param {string} twimlAppSid - TwiML Application SID
  * @param {string} identity - User identity (user ID)
  * @param {string} friendlyName - User friendly name
  * @returns {Promise<string>} - JWT access token
@@ -276,27 +277,24 @@ export async function generateAccessToken(
   accountSid,
   apiKeySid,
   apiKeySecret,
+  twimlAppSid,
   identity,
   friendlyName
 ) {
   try {
-    // We'll use the Twilio REST API to generate tokens
-    // Or we can implement JWT generation directly using jose library
-
-    // For now, let's use a simple JWT approach with jose
     const { SignJWT } = await import('jose');
 
     const secret = new TextEncoder().encode(apiKeySecret);
     const now = Math.floor(Date.now() / 1000);
 
-    // Create Voice Grant
+    // Create Voice Grant with TwiML App SID
     const grants = {
       voice: {
         incoming: {
           allow: true,
         },
         outgoing: {
-          application_sid: null, // Will be set if needed
+          application_sid: twimlAppSid, // REQUIRED: TwiML App for routing
         },
       },
     };

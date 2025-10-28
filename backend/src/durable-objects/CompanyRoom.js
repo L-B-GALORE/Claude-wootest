@@ -1,5 +1,5 @@
 /**
- * CompanyRoom Durable Object
+ * CompanyRoom Durable Object (with WebSocket Hibernation API)
  *
  * Purpose: Manages WebSocket connections for a single company (tenant).
  * Each company gets its own Durable Object instance, providing:
@@ -7,46 +7,42 @@
  * - Incoming call notifications
  * - New message notifications
  * - Call status updates
- * - Typing indicators (future)
  *
  * Architecture:
  * - One Durable Object instance per company
- * - Holds all active WebSocket connections for that company's users
- * - Stores presence state in-memory (fast)
- * - Persists presence to PRESENCE_KV (for cross-region consistency)
+ * - Uses WebSocket Hibernation API for cost efficiency
+ * - Only wakes up when processing messages (10x-1000x cheaper!)
+ * - Simple JSON message protocol (no Socket.IO overhead)
  *
- * WebSocket Message Types:
+ * Message Types (JSON):
  * - Client → Server:
  *   - { type: 'heartbeat' } - Keep connection alive
- *   - { type: 'accept_call', callSid: '...' } - Accept incoming call
- *   - { type: 'reject_call', callSid: '...' } - Reject incoming call
+ *   - { type: 'accept_call', data: { callSid } }
+ *   - { type: 'reject_call', data: { callSid } }
+ *   - { type: 'join_room', data: { room } }
  *
  * - Server → Client:
- *   - { type: 'incoming_call', ...callData } - New call notification
- *   - { type: 'call_answered', callSid, answeredBy } - Someone answered
- *   - { type: 'new_message', ...messageData } - New SMS/email
- *   - { type: 'presence_update', userId, status } - User online/offline
- *   - { type: 'user_joined', userId } - User connected
- *   - { type: 'user_left', userId } - User disconnected
+ *   - { type: 'connected', data: { userId, companyId } }
+ *   - { type: 'incoming_call', data: { callSid, from, to, ... } }
+ *   - { type: 'call_answered', data: { callSid, answeredBy } }
+ *   - { type: 'call_ended', data: { callSid, status } }
+ *   - { type: 'user_joined', data: { userId } }
+ *   - { type: 'user_left', data: { userId } }
+ *   - { type: 'presence_snapshot', data: { users: [...] } }
  *
- * BEFORE MODIFYING:
- * - Does this change affect all companies' WebSocket behavior?
- * - Will this break existing client connections?
- * - Should this be a new message type instead of modifying existing ones?
- * - Does this need to be persisted to KV or just in-memory?
- *
- * Used by:
- * - Frontend WebSocket clients (React app)
- * - Backend webhook handlers (Twilio sends event → broadcast to users)
- * - Presence tracking system
+ * WebSocket Hibernation API Benefits:
+ * - Duration charges ONLY when processing messages
+ * - FREE when idle (even with connections open!)
+ * - Cloudflare handles pings/pongs automatically
+ * - 10x-1000x cost savings vs non-hibernation
  */
 
 export class CompanyRoom {
   constructor(state, env) {
     this.state = state;
     this.env = env;
-    this.connections = new Map(); // userId → WebSocket
-    this.userPresence = new Map(); // userId → { status, lastSeen }
+    this.ctx = state;
+    console.log('[CompanyRoom] Initialized new CompanyRoom instance');
   }
 
   /**
@@ -73,7 +69,7 @@ export class CompanyRoom {
   }
 
   /**
-   * Handle WebSocket connection
+   * Handle WebSocket connection (Hibernation API)
    */
   async handleWebSocket(request) {
     const url = new URL(request.url);
@@ -81,59 +77,66 @@ export class CompanyRoom {
     const companyId = url.searchParams.get('companyId');
 
     if (!userId || !companyId) {
+      console.error('[CompanyRoom] WebSocket rejected: Missing userId or companyId');
       return new Response('Missing userId or companyId', { status: 400 });
     }
+
+    console.log(`[CompanyRoom] New WebSocket connection - userId: ${userId}, companyId: ${companyId}`);
 
     // Create WebSocket pair
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
 
-    // Accept the WebSocket connection
-    server.accept();
+    // HIBERNATION API: Use ctx.acceptWebSocket instead of server.accept()
+    // This enables hibernation - DO sleeps when idle!
+    this.ctx.acceptWebSocket(server);
+    console.log(`[CompanyRoom] ✅ WebSocket accepted with Hibernation API for userId: ${userId}`);
 
-    // Store the connection
-    this.connections.set(userId, server);
-
-    // Update presence
-    this.userPresence.set(userId, {
-      status: 'online',
-      lastSeen: Date.now(),
+    // Store connection metadata using serializeAttachment (survives hibernation)
+    server.serializeAttachment({
+      userId: userId,
+      companyId: companyId,
+      connectedAt: Date.now(),
+      rooms: [], // Rooms this user has joined
     });
 
-    // Broadcast user joined to other users
-    this.broadcast({
+    // Send connected message
+    this.sendToWebSocket(server, {
+      type: 'connected',
+      data: {
+        userId: userId,
+        companyId: companyId,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    // Broadcast user_joined to other connected users
+    this.broadcastToOthers(server, {
       type: 'user_joined',
-      userId,
-      timestamp: new Date().toISOString(),
-    }, userId); // Exclude the user who just joined
+      data: {
+        userId: userId,
+        timestamp: new Date().toISOString(),
+      },
+    });
 
-    // Send current presence to the new user
-    server.send(JSON.stringify({
+    // Send presence snapshot
+    const connectedUsers = this.ctx.getWebSockets().map(ws => {
+      const meta = ws.deserializeAttachment();
+      return {
+        userId: meta.userId,
+        status: 'online',
+        connectedAt: meta.connectedAt,
+      };
+    });
+
+    this.sendToWebSocket(server, {
       type: 'presence_snapshot',
-      users: Array.from(this.userPresence.entries()).map(([id, data]) => ({
-        userId: id,
-        status: data.status,
-      })),
-    }));
-
-    // Handle incoming messages
-    server.addEventListener('message', (event) => {
-      this.handleMessage(userId, event.data);
+      data: {
+        users: connectedUsers,
+      },
     });
 
-    // Handle connection close
-    server.addEventListener('close', () => {
-      this.handleDisconnect(userId);
-    });
-
-    // Handle errors
-    server.addEventListener('error', (event) => {
-      console.error('WebSocket error for user', userId, event);
-      this.handleDisconnect(userId);
-    });
-
-    // Set up heartbeat timeout (60 seconds)
-    this.setHeartbeatTimeout(userId);
+    console.log(`[CompanyRoom] Connection setup complete for userId: ${userId}, total connections: ${this.ctx.getWebSockets().length}`);
 
     return new Response(null, {
       status: 101,
@@ -142,118 +145,162 @@ export class CompanyRoom {
   }
 
   /**
-   * Handle incoming WebSocket message
+   * HIBERNATION API: Called when WebSocket receives a message
+   * DO wakes up, processes this, then hibernates again
    */
-  handleMessage(userId, data) {
-    try {
-      const message = JSON.parse(data);
+  async webSocketMessage(ws, message) {
+    const meta = ws.deserializeAttachment();
+    const userId = meta.userId;
 
-      switch (message.type) {
+    try {
+      console.log(`[CompanyRoom] 📨 Message from userId: ${userId}`);
+
+      // Parse JSON message
+      const msg = JSON.parse(message);
+      console.log(`[CompanyRoom] Message type: ${msg.type}`, msg.data || {});
+
+      switch (msg.type) {
         case 'heartbeat':
-          // Update last seen time
-          const presence = this.userPresence.get(userId);
-          if (presence) {
-            presence.lastSeen = Date.now();
-          }
-          // Reset heartbeat timeout
-          this.setHeartbeatTimeout(userId);
+          console.log(`[CompanyRoom] ❤️ Heartbeat from userId: ${userId}`);
+          // Just log it - Cloudflare handles pings/pongs automatically!
           break;
 
         case 'accept_call':
-          // User accepted an incoming call
-          // Broadcast to other users that this call was answered
-          this.broadcast({
+          console.log(`[CompanyRoom] ✅ User ${userId} accepting call: ${msg.data.callSid}`);
+          this.broadcastToOthers(ws, {
             type: 'call_answered',
-            callSid: message.callSid,
-            answeredBy: userId,
-            timestamp: new Date().toISOString(),
-          }, userId);
+            data: {
+              callSid: msg.data.callSid,
+              answeredBy: userId,
+              timestamp: new Date().toISOString(),
+            },
+          });
           break;
 
         case 'reject_call':
-          // User rejected an incoming call
+          console.log(`[CompanyRoom] ❌ User ${userId} rejecting call: ${msg.data.callSid}`);
           // Just log it, don't broadcast (call might still ring others)
-          console.log('User', userId, 'rejected call', message.callSid);
+          break;
+
+        case 'join_room':
+          console.log(`[CompanyRoom] 🚪 User ${userId} joining room: ${msg.data.room}`);
+          meta.rooms.push(msg.data.room);
+          ws.serializeAttachment(meta);
+          break;
+
+        case 'leave_room':
+          console.log(`[CompanyRoom] 🚪 User ${userId} leaving room: ${msg.data.room}`);
+          meta.rooms = meta.rooms.filter(r => r !== msg.data.room);
+          ws.serializeAttachment(meta);
           break;
 
         default:
-          console.warn('Unknown message type:', message.type);
+          console.warn(`[CompanyRoom] ⚠️ Unknown message type '${msg.type}' from userId: ${userId}`);
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error(`[CompanyRoom] ❌ Error handling message from userId: ${userId}`, error);
     }
+
+    // DO automatically hibernates after this method returns!
   }
 
   /**
-   * Handle user disconnect
+   * HIBERNATION API: Called when WebSocket closes
    */
-  handleDisconnect(userId) {
-    // Remove connection
-    this.connections.delete(userId);
+  async webSocketClose(ws, code, reason, wasClean) {
+    const meta = ws.deserializeAttachment();
+    const userId = meta.userId;
 
-    // Update presence
-    this.userPresence.set(userId, {
-      status: 'offline',
-      lastSeen: Date.now(),
-    });
+    console.log(`[CompanyRoom] 🔌 WebSocket closed for userId: ${userId}, code: ${code}, reason: ${reason || 'none'}`);
 
-    // Broadcast user left
-    this.broadcast({
+    // Broadcast user_left to remaining connections
+    this.broadcastToOthers(ws, {
       type: 'user_left',
-      userId,
-      timestamp: new Date().toISOString(),
+      data: {
+        userId: userId,
+        timestamp: new Date().toISOString(),
+      },
     });
 
-    // Clean up old presence data after 5 minutes
-    setTimeout(() => {
-      const presence = this.userPresence.get(userId);
-      if (presence && presence.status === 'offline') {
-        this.userPresence.delete(userId);
-      }
-    }, 5 * 60 * 1000);
+    console.log(`[CompanyRoom] User ${userId} disconnected, remaining connections: ${this.ctx.getWebSockets().length}`);
   }
 
   /**
-   * Set heartbeat timeout for a user
+   * Send JSON message to a specific WebSocket
    */
-  setHeartbeatTimeout(userId) {
-    // Clear existing timeout
-    if (this.heartbeatTimeouts) {
-      clearTimeout(this.heartbeatTimeouts.get(userId));
-    } else {
-      this.heartbeatTimeouts = new Map();
-    }
-
-    // Set new timeout
-    const timeout = setTimeout(() => {
-      console.log('Heartbeat timeout for user', userId);
-      this.handleDisconnect(userId);
-    }, 60 * 1000); // 60 seconds
-
-    this.heartbeatTimeouts.set(userId, timeout);
-  }
-
-  /**
-   * Broadcast message to all connected users (or exclude specific user)
-   */
-  broadcast(message, excludeUserId = null) {
-    const payload = JSON.stringify(message);
-
-    for (const [userId, ws] of this.connections.entries()) {
-      if (userId !== excludeUserId && ws.readyState === WebSocket.READY_STATE_OPEN) {
-        ws.send(payload);
-      }
-    }
-  }
-
-  /**
-   * Send message to specific user
-   */
-  sendToUser(userId, message) {
-    const ws = this.connections.get(userId);
-    if (ws && ws.readyState === WebSocket.READY_STATE_OPEN) {
+  sendToWebSocket(ws, message) {
+    try {
       ws.send(JSON.stringify(message));
+      console.log(`[CompanyRoom] 📤 Sent message type '${message.type}' to connection`);
+    } catch (error) {
+      console.error(`[CompanyRoom] ❌ Error sending message:`, error);
     }
+  }
+
+  /**
+   * Broadcast message to all connected WebSockets except one
+   */
+  broadcastToOthers(excludeWs, message) {
+    const allWebSockets = this.ctx.getWebSockets();
+    let count = 0;
+
+    for (const ws of allWebSockets) {
+      if (ws !== excludeWs) {
+        this.sendToWebSocket(ws, message);
+        count++;
+      }
+    }
+
+    console.log(`[CompanyRoom] 📢 Broadcasted '${message.type}' to ${count} connections`);
+  }
+
+  /**
+   * Broadcast message to all connected WebSockets
+   */
+  broadcastToAll(message) {
+    const allWebSockets = this.ctx.getWebSockets();
+
+    for (const ws of allWebSockets) {
+      this.sendToWebSocket(ws, message);
+    }
+
+    console.log(`[CompanyRoom] 📢 Broadcasted '${message.type}' to all ${allWebSockets.length} connections`);
+  }
+
+  /**
+   * Broadcast message to users in a specific room
+   */
+  broadcastToRoom(roomName, message) {
+    const allWebSockets = this.ctx.getWebSockets();
+    let count = 0;
+
+    for (const ws of allWebSockets) {
+      const meta = ws.deserializeAttachment();
+      if (meta.rooms.includes(roomName)) {
+        this.sendToWebSocket(ws, message);
+        count++;
+      }
+    }
+
+    console.log(`[CompanyRoom] 📢 Broadcasted '${message.type}' to ${count} users in room '${roomName}'`);
+  }
+
+  /**
+   * Send message to specific users by userId
+   */
+  sendToUsers(userIds, message) {
+    const allWebSockets = this.ctx.getWebSockets();
+    let count = 0;
+
+    for (const ws of allWebSockets) {
+      const meta = ws.deserializeAttachment();
+      if (userIds.includes(meta.userId)) {
+        this.sendToWebSocket(ws, message);
+        count++;
+      }
+    }
+
+    console.log(`[CompanyRoom] 📤 Sent '${message.type}' to ${count}/${userIds.length} target users`);
   }
 
   /**
@@ -262,23 +309,42 @@ export class CompanyRoom {
   async handleBroadcast(request) {
     try {
       const body = await request.json();
-      const { event, data, targetUsers } = body;
+      const { event, data, targetUsers, room } = body;
 
-      // If targetUsers specified, send to those users only
+      console.log(`[CompanyRoom] Broadcast request - event: ${event}, targetUsers: ${targetUsers?.length || 'all'}, room: ${room || 'none'}`);
+
+      const message = {
+        type: event,
+        data: data,
+      };
+
+      // Priority order: targetUsers > room > all
       if (targetUsers && Array.isArray(targetUsers)) {
-        targetUsers.forEach(userId => {
-          this.sendToUser(userId, { type: event, ...data });
-        });
+        // Send to specific users
+        console.log(`[CompanyRoom] Broadcasting to ${targetUsers.length} specific users`);
+        this.sendToUsers(targetUsers, message);
+      } else if (room) {
+        // Send to room
+        console.log(`[CompanyRoom] Broadcasting to room: ${room}`);
+        this.broadcastToRoom(room, message);
       } else {
         // Broadcast to all users
-        this.broadcast({ type: event, ...data });
+        console.log(`[CompanyRoom] Broadcasting to all users`);
+        this.broadcastToAll(message);
       }
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response(JSON.stringify({
+        success: true,
+        connections: this.ctx.getWebSockets().length,
+      }), {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch (error) {
-      return new Response(JSON.stringify({ success: false, error: error.message }), {
+      console.error('[CompanyRoom] Broadcast error:', error);
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
+      }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -289,11 +355,15 @@ export class CompanyRoom {
    * Handle get presence request
    */
   async handleGetPresence(request) {
-    const presence = Array.from(this.userPresence.entries()).map(([userId, data]) => ({
-      userId,
-      status: data.status,
-      lastSeen: data.lastSeen,
-    }));
+    const allWebSockets = this.ctx.getWebSockets();
+    const presence = allWebSockets.map(ws => {
+      const meta = ws.deserializeAttachment();
+      return {
+        userId: meta.userId,
+        status: 'online',
+        connectedAt: meta.connectedAt,
+      };
+    });
 
     return new Response(JSON.stringify({ presence }), {
       headers: { 'Content-Type': 'application/json' },

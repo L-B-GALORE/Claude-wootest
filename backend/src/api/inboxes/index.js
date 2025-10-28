@@ -18,8 +18,16 @@
 
 import { Hono } from 'hono';
 import { getPrisma } from '../../lib/prisma.js';
+import routingRoutes from './routing.js';
+import memberRoutes from './members.js';
 
 const app = new Hono();
+
+// Mount routing strategy routes
+app.route('/', routingRoutes);
+
+// Mount member management routes
+app.route('/', memberRoutes);
 
 // Get all inboxes for company
 app.get('/', async (c) => {
@@ -43,17 +51,33 @@ app.get('/', async (c) => {
       },
     });
 
-    return c.json({
-      success: true,
-      data: {
-        inboxes: inboxes.map((inbox) => ({
+    // Count channels routed to each inbox
+    const inboxesWithCounts = await Promise.all(
+      inboxes.map(async (inbox) => {
+        const channelCount = await prisma.channel.count({
+          where: {
+            companyId: companyId,
+            routingType: 'INBOX',
+            routingTargetId: inbox.id,
+          },
+        });
+
+        return {
           id: inbox.id,
           name: inbox.name,
           description: inbox.description,
           memberCount: inbox._count.members,
+          channelCount,
           createdAt: inbox.createdAt,
           updatedAt: inbox.updatedAt,
-        })),
+        };
+      })
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        inboxes: inboxesWithCounts,
       },
     });
   } catch (error) {

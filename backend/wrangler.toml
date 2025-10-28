@@ -6,7 +6,7 @@
 #
 # Documentation: https://developers.cloudflare.com/workers/wrangler/configuration/
 
-name = "customer-service-platform-api"
+name = "claude-wootestnew-api"
 main = "src/index.js"
 compatibility_date = "2024-10-01"
 compatibility_flags = ["nodejs_compat"]
@@ -33,7 +33,7 @@ bucket_name = "customer-service-media"
 [[durable_objects.bindings]]
 name = "COMPANY_ROOM"
 class_name = "CompanyRoom"
-script_name = "customer-service-platform-api"
+script_name = "claude-wootestnew-api"
 
 [[migrations]]
 tag = "v1"

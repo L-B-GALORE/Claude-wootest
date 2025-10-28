@@ -64,4 +64,4 @@ jobs:
       - name: Deployment Summary
         run: |
           echo "✅ Backend Worker deployed successfully!"
-          echo "🌐 Worker URL: https://customer-service-platform-api.lilboo.workers.dev"
+          echo "🌐 Worker URL: https://claude-wootestnew-api.lilboo.workers.dev"

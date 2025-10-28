@@ -16,7 +16,7 @@
 
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://customer-service-platform-api.lilboo.workers.dev';
+const API_URL = import.meta.env.VITE_API_URL || 'https://claude-wootestnew-api.lilboo.workers.dev';
 
 // Create axios instance
 const api = axios.create({

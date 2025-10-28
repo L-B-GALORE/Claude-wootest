@@ -43,10 +43,36 @@ app.get('/', async (c) => {
       },
     });
 
+    // Enrich channels with routing target details
+    const enrichedChannels = await Promise.all(
+      channels.map(async (channel) => {
+        let routingTarget = null;
+
+        if (channel.routingType === 'INBOX' && channel.routingTargetId) {
+          const inbox = await prisma.inbox.findUnique({
+            where: { id: channel.routingTargetId },
+            select: { id: true, name: true },
+          });
+          routingTarget = inbox;
+        } else if (channel.routingType === 'USER' && channel.routingTargetId) {
+          const user = await prisma.user.findUnique({
+            where: { id: channel.routingTargetId },
+            select: { id: true, name: true, email: true },
+          });
+          routingTarget = user;
+        }
+
+        return {
+          ...channel,
+          routingTarget,
+        };
+      })
+    );
+
     return c.json({
       success: true,
       data: {
-        channels,
+        channels: enrichedChannels,
       },
     });
   } catch (error) {

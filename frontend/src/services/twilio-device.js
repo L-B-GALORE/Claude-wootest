@@ -28,19 +28,17 @@ class TwilioDeviceService {
 
   /**
    * Initialize Twilio Device with access token
+   *
+   * Note: Microphone permission is NOT requested here.
+   * The browser will automatically request microphone access when:
+   * - Making an outbound call (device.connect())
+   * - Accepting an incoming call (call.accept())
+   *
+   * This prevents the "microphone in use" indicator from showing
+   * immediately on login, which is poor UX.
    */
   async initialize() {
     try {
-      // CRITICAL: Request microphone permissions FIRST
-      console.log('[Twilio Device] Requesting microphone permissions...');
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log('[Twilio Device] Microphone access granted');
-      } catch (permError) {
-        console.error('[Twilio Device] Microphone permission denied:', permError);
-        throw new Error('Microphone access is required. Please allow microphone permissions and refresh.');
-      }
-
       // Get access token from backend
       const response = await api.post('/api/v1/voice/token');
 
@@ -52,7 +50,7 @@ class TwilioDeviceService {
 
       console.log('[Twilio Device] Creating Device instance...');
 
-      // Create Device instance
+      // Create Device instance (no mic access needed yet)
       this.device = new Device(token, {
         logLevel: 'debug',
         edge: 'ashburn',
@@ -62,10 +60,10 @@ class TwilioDeviceService {
 
       console.log('[Twilio Device] Registering device...');
 
-      // Register the device
+      // Register the device (no mic access needed for registration)
       await this.device.register();
 
-      console.log('[Twilio Device] Registered successfully');
+      console.log('[Twilio Device] Registered successfully (microphone will be requested when making/accepting calls)');
 
       return this.device;
     } catch (error) {

@@ -272,8 +272,14 @@ model RoutingStrategy {
 model Contact {
   id           String   @id @default(uuid())
   companyId    String   @map("company_id")
-  phoneNumber  String?  @map("phone_number")
+
+  // Contact identifiers (at least one required, stored in E.164 format for phone numbers)
+  phoneNumber  String?  @map("phone_number")  // E.164 format: +15551234567
   email        String?
+  whatsappId   String?  @map("whatsapp_id")   // WhatsApp phone number (E.164 format)
+  facebookId   String?  @map("facebook_id")   // Facebook Page-Scoped ID
+
+  // Contact details
   name         String?
   notes        String?
   customFields Json?    @map("custom_fields")
@@ -284,9 +290,16 @@ model Contact {
   company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversations Conversation[]
 
+  // Unique constraints - prevent duplicate contacts per company
+  @@unique([companyId, phoneNumber], name: "unique_company_phone")
+  @@unique([companyId, email], name: "unique_company_email")
+  @@unique([companyId, whatsappId], name: "unique_company_whatsapp")
+  @@unique([companyId, facebookId], name: "unique_company_facebook")
+
+  // Indexes for fast lookups
   @@index([companyId])
-  @@index([phoneNumber])
-  @@index([email])
+  @@index([companyId, phoneNumber])
+  @@index([companyId, email])
   @@map("contacts")
 }
 

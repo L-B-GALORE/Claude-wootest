@@ -5,6 +5,7 @@ import ImportNumbersModal from '../../components/modals/ImportNumbersModal';
 import CreateInboxModal from '../../components/modals/CreateInboxModal';
 import { Phone, MessageSquare, Mail, Edit2, Trash2 } from 'lucide-react';
 import api from '../../services/api';
+import CountrySelector, { getCountryByCode } from '../../components/forms/CountrySelector';
 
 function SettingsPage() {
   const { user, company } = useAuth();
@@ -19,6 +20,11 @@ function SettingsPage() {
   const [inboxes, setInboxes] = useState([]);
   const [loadingInboxes, setLoadingInboxes] = useState(false);
   const [showCreateInboxModal, setShowCreateInboxModal] = useState(false);
+
+  // Company settings state
+  const [defaultCountry, setDefaultCountry] = useState('US');
+  const [savingCountry, setSavingCountry] = useState(false);
+  const [countryMessage, setCountryMessage] = useState(null);
 
   const tabs = [
     { id: 'providers', label: 'Providers' },
@@ -37,6 +43,8 @@ function SettingsPage() {
       fetchChannels();
     } else if (activeTab === 'inboxes') {
       fetchInboxes();
+    } else if (activeTab === 'company') {
+      fetchCompanySettings();
     }
   }, [activeTab]);
 
@@ -79,6 +87,50 @@ function SettingsPage() {
       console.error('Failed to fetch inboxes:', error);
     } finally {
       setLoadingInboxes(false);
+    }
+  };
+
+  const fetchCompanySettings = async () => {
+    try {
+      const response = await api.get('/api/v1/company/settings');
+      if (response.data.success) {
+        const settings = response.data.data.settings;
+        if (settings.default_country_code && settings.default_country_code.code) {
+          setDefaultCountry(settings.default_country_code.code);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch company settings:', error);
+    }
+  };
+
+  const saveCountryCode = async () => {
+    setSavingCountry(true);
+    setCountryMessage(null);
+
+    try {
+      const country = getCountryByCode(defaultCountry);
+      if (!country) {
+        setCountryMessage({ type: 'error', text: 'Invalid country selected' });
+        setSavingCountry(false);
+        return;
+      }
+
+      const response = await api.put('/api/v1/company/settings/dialing', {
+        countryCode: country.code,
+        dialCode: country.dialCode,
+        countryName: country.name,
+      });
+
+      if (response.data.success) {
+        setCountryMessage({ type: 'success', text: 'Default country code updated successfully' });
+        setTimeout(() => setCountryMessage(null), 3000);
+      }
+    } catch (error) {
+      console.error('Failed to save country code:', error);
+      setCountryMessage({ type: 'error', text: 'Failed to save country code' });
+    } finally {
+      setSavingCountry(false);
     }
   };
 
@@ -409,21 +461,73 @@ function SettingsPage() {
         )}
 
         {activeTab === 'company' && (
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Company Information</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Update your company details</p>
+          <div className="space-y-8">
+            {/* Company Information Section */}
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Company Information</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Update your company details</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Company Name
+                </label>
+                <input
+                  type="text"
+                  value={company?.name || ''}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Company Name
-              </label>
-              <input
-                type="text"
-                value={company?.name || ''}
-                disabled
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-              />
+
+            {/* Divider */}
+            <div className="border-t border-gray-200 dark:border-gray-700"></div>
+
+            {/* Dialing Preferences Section */}
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Dialing Preferences</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Set the default country code for outbound calls
+                </p>
+              </div>
+
+              <div className="max-w-md">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Default Country Code
+                </label>
+                <CountrySelector
+                  value={defaultCountry}
+                  onChange={setDefaultCountry}
+                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  When agents make calls, this country code will be pre-selected in the dialer
+                </p>
+
+                {/* Success/Error Message */}
+                {countryMessage && (
+                  <div
+                    className={`mt-3 px-4 py-2 rounded-lg text-sm ${
+                      countryMessage.type === 'success'
+                        ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-400'
+                        : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-400'
+                    }`}
+                  >
+                    {countryMessage.text}
+                  </div>
+                )}
+
+                {/* Save Button */}
+                <button
+                  onClick={saveCountryCode}
+                  disabled={savingCountry}
+                  className="mt-4 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  {savingCountry ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </div>
           </div>
         )}

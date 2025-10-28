@@ -5,8 +5,10 @@
  *
  * Features:
  * - Phone number input with dialpad
+ * - Country selector with flags
+ * - Real-time phone number formatting (as-you-type)
+ * - Phone number validation
  * - Caller ID selection (which number to call FROM)
- * - Call button
  *
  * Props:
  * - onCall: (phoneNumber, callerIdNumber) => void
@@ -15,20 +17,40 @@
 
 import { useState, useEffect } from 'react';
 import { Phone, X, Delete } from 'lucide-react';
+import { AsYouType, parsePhoneNumber } from 'libphonenumber-js';
 import api from '../../services/api';
+import CountrySelector, { getCountryByCode } from '../forms/CountrySelector';
 
 function OutboundDialer({ onCall, onCancel }) {
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [rawInput, setRawInput] = useState(''); // Store raw input for dialpad
   const [callerIds, setCallerIds] = useState([]);
   const [selectedCallerId, setSelectedCallerId] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('US'); // Default to US
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [validationError, setValidationError] = useState(null);
 
-  // Fetch available caller IDs when component mounts
+  // Fetch company settings and caller IDs when component mounts
   useEffect(() => {
-    async function fetchCallerIds() {
+    async function fetchData() {
       try {
         setLoading(true);
+
+        // Fetch company settings to get default country code
+        try {
+          const settingsResponse = await api.get('/api/v1/company/settings');
+          const defaultCountry = settingsResponse.data.data.settings?.default_country_code;
+          if (defaultCountry && defaultCountry.code) {
+            setSelectedCountry(defaultCountry.code);
+            console.log('[OutboundDialer] Using company default country:', defaultCountry.code);
+          }
+        } catch (err) {
+          console.warn('[OutboundDialer] Could not fetch company settings, using US as default:', err);
+          // Continue with default US
+        }
+
+        // Fetch available caller IDs
         const response = await api.get('/api/v1/voice/caller-ids');
         const ids = response.data.data.callerIds;
         setCallerIds(ids);
@@ -46,27 +68,79 @@ function OutboundDialer({ onCall, onCancel }) {
       }
     }
 
-    fetchCallerIds();
+    fetchData();
   }, []);
 
+  // Format phone number as user types
+  const handlePhoneNumberChange = (value) => {
+    // Store raw input
+    setRawInput(value);
+
+    // Format using AsYouType
+    const formatter = new AsYouType(selectedCountry);
+    const formatted = formatter.input(value);
+
+    setPhoneNumber(formatted);
+    setValidationError(null); // Clear validation error when user types
+  };
+
   const handleDialpadClick = (digit) => {
-    setPhoneNumber(prev => prev + digit);
+    const newValue = rawInput + digit;
+    handlePhoneNumberChange(newValue);
   };
 
   const handleBackspace = () => {
-    setPhoneNumber(prev => prev.slice(0, -1));
+    const newValue = rawInput.slice(0, -1);
+    handlePhoneNumberChange(newValue);
+  };
+
+  // When country changes, re-format the phone number
+  const handleCountryChange = (newCountry) => {
+    setSelectedCountry(newCountry);
+
+    // Re-format existing number with new country
+    if (rawInput) {
+      const formatter = new AsYouType(newCountry);
+      const formatted = formatter.input(rawInput);
+      setPhoneNumber(formatted);
+    }
+
+    setValidationError(null);
   };
 
   const handleCall = () => {
     if (!phoneNumber.trim()) {
+      setValidationError('Please enter a phone number');
       return;
     }
 
     if (!selectedCallerId) {
+      setValidationError('Please select a caller ID');
       return;
     }
 
-    onCall(phoneNumber.trim(), selectedCallerId);
+    // Validate and normalize phone number
+    try {
+      const parsed = parsePhoneNumber(phoneNumber, selectedCountry);
+
+      if (!parsed || !parsed.isValid()) {
+        const countryInfo = getCountryByCode(selectedCountry);
+        setValidationError(`Invalid phone number for ${countryInfo?.name || selectedCountry}`);
+        return;
+      }
+
+      // Get E.164 format
+      const e164 = parsed.number;
+
+      console.log('[OutboundDialer] Dialing:', e164, 'from:', selectedCallerId);
+
+      // Clear validation error and call
+      setValidationError(null);
+      onCall(e164, selectedCallerId);
+    } catch (err) {
+      console.error('[OutboundDialer] Phone validation error:', err);
+      setValidationError('Please enter a valid phone number');
+    }
   };
 
   const dialpadButtons = [
@@ -143,8 +217,8 @@ function OutboundDialer({ onCall, onCancel }) {
             </button>
           </div>
 
-          {/* Caller ID Selection - in header */}
-          <div>
+          {/* Caller ID Selection */}
+          <div className="mb-3">
             <label className="block text-xs text-white/70 mb-1">
               Calling from
             </label>
@@ -160,6 +234,18 @@ function OutboundDialer({ onCall, onCancel }) {
               ))}
             </select>
           </div>
+
+          {/* Country Selector */}
+          <div>
+            <label className="block text-xs text-white/70 mb-1">
+              Country
+            </label>
+            <CountrySelector
+              value={selectedCountry}
+              onChange={handleCountryChange}
+              className="w-full px-2 py-1.5 text-sm bg-white/20 text-white border border-white/30 rounded-lg"
+            />
+          </div>
         </div>
 
         {/* Body */}
@@ -169,10 +255,15 @@ function OutboundDialer({ onCall, onCancel }) {
             <input
               type="tel"
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9+\-() ]/g, ''))}
+              onChange={(e) => handlePhoneNumberChange(e.target.value)}
               placeholder="Enter number"
               className="w-full px-3 py-2 text-xl text-center border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 font-mono"
             />
+            {validationError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-center">
+                {validationError}
+              </p>
+            )}
           </div>
 
           {/* Compact Dialpad */}

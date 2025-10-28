@@ -16,7 +16,10 @@
 
 import axios from 'axios';
 
+// Backend API URL - uses environment variable or defaults to production
 const API_URL = import.meta.env.VITE_API_URL || 'https://claude-wootestnew-api.lilboo.workers.dev';
+
+console.log('[API] Using backend URL:', API_URL);
 
 // Create axios instance
 const api = axios.create({

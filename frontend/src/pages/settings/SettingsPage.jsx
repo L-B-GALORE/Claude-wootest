@@ -6,6 +6,7 @@ import CreateInboxModal from '../../components/modals/CreateInboxModal';
 import { Phone, MessageSquare, Mail, Edit2, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import CountrySelector, { getCountryByCode } from '../../components/forms/CountrySelector';
+// Phase 1: Contact system with phone normalization
 
 function SettingsPage() {
   const { user, company } = useAuth();

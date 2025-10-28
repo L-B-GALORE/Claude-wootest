@@ -1,5 +1,6 @@
 /**
  * Company Settings API Router
+ * Phase 1: Contact system with phone normalization
  *
  * Purpose: Manage company-level settings
  *

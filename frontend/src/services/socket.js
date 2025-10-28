@@ -1,12 +1,12 @@
 /**
- * WebSocket Manager Service (using PartySocket)
+ * WebSocket Manager Service (using native WebSocket)
  *
  * Purpose: Manage WebSocket connection for real-time communication with backend
  *
  * Features:
- * - Auto-reconnection built-in (no manual code needed!)
+ * - Auto-reconnection with exponential backoff
  * - Simple event-based communication
- * - Buffering when disconnected
+ * - Works with Cloudflare Durable Objects + Hibernation API
  * - Comprehensive debugging
  *
  * Events from server:
@@ -20,8 +20,6 @@
  * - 'presence_snapshot' - Current online users
  */
 
-import PartySocket from 'partysocket';
-
 class SocketManager {
   constructor() {
     this.socket = null;
@@ -29,6 +27,13 @@ class SocketManager {
     this.eventHandlers = {};
     this.userId = null;
     this.companyId = null;
+    this.socketUrl = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = Infinity;
+    this.reconnectDelay = 1000; // Start with 1 second
+    this.maxReconnectDelay = 10000; // Max 10 seconds
+    this.reconnectTimer = null;
+    this.shouldReconnect = true;
 
     console.log('[SocketManager] Initialized');
   }
@@ -46,27 +51,33 @@ class SocketManager {
 
     this.userId = userId;
     this.companyId = companyId;
+    this.shouldReconnect = true;
 
     console.log(`[SocketManager] Connecting... userId: ${userId}, companyId: ${companyId}`);
 
     // Build WebSocket URL
     const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
-    const wsUrl = apiUrl.replace('https://', 'wss://').replace('http://', 'ws://');
-    const socketUrl = `${wsUrl}/ws/company/${companyId}?userId=${userId}&companyId=${companyId}`;
+    const wsUrl = apiUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+    this.socketUrl = `${wsUrl}/ws/company/${companyId}?userId=${userId}&companyId=${companyId}`;
 
-    console.log(`[SocketManager] WebSocket URL: ${socketUrl}`);
+    console.log(`[SocketManager] WebSocket URL: ${this.socketUrl}`);
 
-    // Create PartySocket connection (auto-reconnection built-in!)
-    this.socket = new PartySocket(socketUrl, {
-      // Optional configuration
-      maxReconnectionDelay: 10000, // Max 10 seconds between reconnects
-      minReconnectionDelay: 1000,  // Min 1 second
-      reconnectionDelayGrowFactor: 1.3,
-      maxEnqueuedMessages: 100, // Buffer messages when disconnected
-      debug: false, // Set to true for PartySocket internal logs
-    });
+    this.createWebSocket();
+  }
 
-    this.setupEventListeners();
+  /**
+   * Create WebSocket connection
+   */
+  createWebSocket() {
+    try {
+      // Create native WebSocket connection
+      this.socket = new WebSocket(this.socketUrl);
+
+      this.setupEventListeners();
+    } catch (error) {
+      console.error('[SocketManager] Error creating WebSocket:', error);
+      this.handleReconnect();
+    }
   }
 
   /**
@@ -77,25 +88,34 @@ class SocketManager {
 
     console.log('[SocketManager] Setting up event listeners');
 
-    // Connection events
+    // Connection opened
     this.socket.addEventListener('open', () => {
       console.log('[SocketManager] ✅ WebSocket connected');
       this.connected = true;
+      this.reconnectAttempts = 0;
+      this.reconnectDelay = 1000; // Reset delay
       this.triggerEvent('socket_connected', { userId: this.userId, companyId: this.companyId });
     });
 
+    // Connection closed
     this.socket.addEventListener('close', (event) => {
       console.log(`[SocketManager] ❌ WebSocket closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
       this.connected = false;
       this.triggerEvent('socket_disconnected', { code: event.code, reason: event.reason });
+
+      // Attempt reconnection if not manually disconnected
+      if (this.shouldReconnect) {
+        this.handleReconnect();
+      }
     });
 
+    // Connection error
     this.socket.addEventListener('error', (error) => {
       console.error('[SocketManager] ⚠️ WebSocket error:', error);
       this.triggerEvent('socket_error', { error: error.message || 'WebSocket error' });
     });
 
-    // Message events
+    // Message received
     this.socket.addEventListener('message', (event) => {
       try {
         const message = JSON.parse(event.data);
@@ -110,12 +130,45 @@ class SocketManager {
   }
 
   /**
+   * Handle reconnection with exponential backoff
+   */
+  handleReconnect() {
+    if (!this.shouldReconnect) {
+      console.log('[SocketManager] Reconnection disabled');
+      return;
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('[SocketManager] Max reconnection attempts reached');
+      return;
+    }
+
+    this.reconnectAttempts++;
+
+    console.log(`[SocketManager] Reconnecting in ${this.reconnectDelay}ms (attempt ${this.reconnectAttempts})...`);
+
+    // Clear any existing reconnect timer
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+    }
+
+    // Schedule reconnection
+    this.reconnectTimer = setTimeout(() => {
+      console.log('[SocketManager] Attempting to reconnect...');
+      this.createWebSocket();
+    }, this.reconnectDelay);
+
+    // Exponential backoff with max delay
+    this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
+  }
+
+  /**
    * Send message to server
    * @param {string} type - Message type
    * @param {object} data - Message data
    */
   send(type, data = {}) {
-    if (!this.socket) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       console.warn(`[SocketManager] Cannot send message '${type}', not connected`);
       return;
     }
@@ -123,7 +176,6 @@ class SocketManager {
     const message = { type, data };
     console.log(`[SocketManager] 📤 Sending message type '${type}':`, data);
 
-    // PartySocket handles buffering if disconnected!
     this.socket.send(JSON.stringify(message));
   }
 
@@ -222,11 +274,20 @@ class SocketManager {
   disconnect() {
     if (this.socket) {
       console.log('[SocketManager] Disconnecting...');
+      this.shouldReconnect = false; // Disable auto-reconnection
+
+      // Clear reconnect timer
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+
       this.socket.close();
       this.socket = null;
       this.connected = false;
       this.userId = null;
       this.companyId = null;
+      this.socketUrl = null;
     }
   }
 
@@ -248,6 +309,7 @@ class SocketManager {
       userId: this.userId,
       companyId: this.companyId,
       readyState: this.socket?.readyState,
+      reconnectAttempts: this.reconnectAttempts,
     };
   }
 }

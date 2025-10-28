@@ -1093,6 +1093,157 @@ When building features, ensure:
 
 ---
 
+### 13. Twilio Configuration Validator (Future Feature)
+
+**Status**: ❌ Not started - Added 2025-10-28
+
+**Purpose**: Validate and auto-fix Twilio webhook configurations for providers and phone numbers
+
+**Why This Matters**:
+- Webhook URLs may become outdated if backend domain changes
+- TwiML App SIDs can get misconfigured
+- Phone numbers might be deleted from Twilio but still in our database
+- API credentials may expire or be revoked
+- Manual configuration drift between Twilio and our database
+
+**Features**:
+
+#### Validation Checks
+
+**Provider-Level**:
+1. **Credentials Validation** - Test Account SID + Auth Token with Twilio API
+2. **TwiML App Webhook URLs** - Verify voice webhook points to correct backend domain
+3. **API Keys** - Confirm REST API key and Access Token key still valid
+
+**Channel-Level** (Per Phone Number):
+1. **Phone Number Exists** - Verify number still exists in Twilio account
+2. **Voice Webhook** - Check URL matches expected (only if "voice" in capabilities)
+3. **SMS Webhook** - Check URL matches expected (only if "sms" in capabilities)
+4. **Status Callback** - Verify status webhook URL is correct
+5. **TwiML App SID** - Confirm matches provider's app (only if voice enabled)
+
+**Important**: Validation respects channel capabilities
+- If channel has `capabilities: ["sms"]` (no voice), voice webhook validation is SKIPPED
+- If channel has `capabilities: ["voice"]` (no SMS), SMS webhook validation is SKIPPED
+- Only validate webhooks for enabled capabilities to avoid false errors
+
+#### User Interface
+
+**Location**: Settings → Providers page, next to "Import numbers" link
+
+**Flow**:
+1. User clicks "Check Configuration" button
+2. Modal opens: "Twilio Configuration Validator"
+3. Shows progress: "Validating configuration... 75%"
+4. Displays results:
+   - ✅ Valid checks (green)
+   - ❌ Invalid/misconfigured (red with expected vs actual)
+   - ⊘ Skipped (grayed out - not applicable based on capabilities)
+5. If issues found: "Fix All Issues" button appears
+6. User clicks Fix → All issues auto-corrected
+7. Success message + re-validation to confirm
+
+**Example UI**:
+```
+Twilio Configuration Validator
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Provider Credentials
+  ✅ Account SID & Auth Token
+  ❌ TwiML App webhook URL
+     Expected: https://...new-domain.com/webhooks/twiml/voice
+     Actual: https://...old-domain.com/webhooks/twiml/voice
+
+Phone Numbers (3 total)
+
++12345678900
+  ✅ Exists in Twilio
+  ❌ Voice webhook (URL mismatch)
+  ✅ SMS webhook
+  ❌ Status callback (URL mismatch)
+  ✅ TwiML App SID
+
++19876543210 (SMS only)
+  ✅ Exists in Twilio
+  ⊘ Voice webhook (not enabled)
+  ✅ SMS webhook
+  ✅ Status callback
+  ⊘ TwiML App SID (not needed)
+
+Summary: 4 issues found
+
+[Fix All Issues] [Close]
+```
+
+#### Backend Implementation
+
+**New Endpoints**:
+1. `POST /api/v1/providers/:providerId/validate-config`
+   - Validates all provider and channel configurations
+   - Returns detailed report with passed/failed checks
+   - Response includes expected vs actual values for failed checks
+
+2. `POST /api/v1/providers/:providerId/fix-config`
+   - Auto-fixes all detected issues
+   - Updates TwiML App webhooks
+   - Updates phone number webhooks (respecting capabilities)
+   - Returns summary of fixes applied
+
+**Files to Create**:
+- `backend/src/api/providers/validate-config.js`
+- `backend/src/api/providers/fix-config.js`
+- `frontend/src/components/modals/ValidateTwilioConfigModal.jsx`
+
+**Fix Logic**:
+```javascript
+// Only update webhooks for enabled capabilities
+const updates = {};
+
+if (capabilities.includes('voice')) {
+  updates.voiceUrl = `${API_URL}/webhooks/inbound/${channelId}`;
+  updates.voiceMethod = 'POST';
+  updates.voiceApplicationSid = appSid;
+}
+
+if (capabilities.includes('sms')) {
+  updates.smsUrl = `${API_URL}/webhooks/inbound/${channelId}`;
+  updates.smsMethod = 'POST';
+}
+
+// Status callback applies to all
+updates.statusCallback = `${API_URL}/webhooks/status/${channelId}`;
+updates.statusCallbackMethod = 'POST';
+
+await twilioClient.incomingPhoneNumbers(phoneNumberSid).update(updates);
+```
+
+#### Edge Cases Handled
+
+1. **Channel has no voice** → Skip voice webhook validation ✅
+2. **Channel has no SMS** → Skip SMS webhook validation ✅
+3. **Phone deleted from Twilio** → Flag as error (can't auto-fix) ❌
+4. **TwiML App deleted** → Flag as error (requires manual recreation) ❌
+5. **Invalid credentials** → Show error, skip channel checks
+6. **API rate limits** → Retry with exponential backoff
+7. **Partial failures** → Show which fixes succeeded and which failed
+
+#### Use Cases
+
+1. **Domain Migration**: Backend moves to new domain → Run validator → Fix all webhooks
+2. **Manual Changes**: User manually modifies Twilio settings → Validator detects drift
+3. **Phone Deletion**: User deletes number from Twilio → Validator detects orphaned channel
+4. **Credential Rotation**: Auth token renewed → Validator confirms new credentials work
+5. **Debugging**: User reports calls not working → Validator identifies misconfigured webhook
+
+#### Future Enhancements
+
+- **Scheduled Validation**: Auto-run validation daily, alert on failures
+- **Webhook Health Monitoring**: Track webhook delivery success rates
+- **Configuration History**: Log all validation runs and fixes applied
+- **Bulk Operations**: Validate/fix multiple providers at once
+
+---
+
 ## Notes & Decisions
 
 **Why Cloudflare Workers?**

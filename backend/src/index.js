@@ -65,7 +65,7 @@ const app = new Hono();
 app.use('*', logger()); // Log all requests
 app.use('*', prettyJSON()); // Pretty JSON responses in development
 app.use('*', cors({
-  origin: ['http://localhost:5173', 'https://customer-service-platform.pages.dev', 'https://claude-wootestnew.pages.dev'],
+  origin: ['http://localhost:5173', 'https://claude-wootestnew.pages.dev'],
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],

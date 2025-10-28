@@ -49,8 +49,8 @@ jobs:
         working-directory: frontend
         run: npm run build
         env:
-          VITE_API_URL: https://customer-service-platform-api.lilboo.workers.dev
-          VITE_WS_URL: wss://customer-service-platform-api.lilboo.workers.dev/ws
+          VITE_API_URL: https://claude-wootestnew-api.lilboo.workers.dev
+          VITE_WS_URL: wss://claude-wootestnew-api.lilboo.workers.dev/ws
 
       - name: Create Pages project if not exists
         continue-on-error: true
@@ -58,16 +58,16 @@ jobs:
           curl -X POST "https://api.cloudflare.com/client/v4/accounts/f09bbb81e8be554d6e67b5de063d8925/pages/projects" \
             -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            --data '{"name":"customer-service-platform","production_branch":"main"}'
+            --data '{"name":"claude-wootestnew","production_branch":"main"}'
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: f09bbb81e8be554d6e67b5de063d8925
-          command: pages deploy frontend/dist --project-name=customer-service-platform --branch=main
+          command: pages deploy frontend/dist --project-name=claude-wootestnew --branch=main
 
       - name: Deployment Summary
         run: |
           echo "✅ Frontend deployed successfully!"
-          echo "🌐 Pages URL: https://customer-service-platform.pages.dev"
+          echo "🌐 Pages URL: https://claude-wootestnew.pages.dev"

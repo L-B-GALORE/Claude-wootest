@@ -65,7 +65,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: f09bbb81e8be554d6e67b5de063d8925
-          command: pages deploy frontend/dist --project-name=claude-wootestnew --branch=main
+          command: pages deploy frontend/dist --project-name=claude-wootestnew --branch=${{ github.ref_name }}
+
 
       - name: Deployment Summary
         run: |

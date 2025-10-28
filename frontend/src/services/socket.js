@@ -8,6 +8,7 @@
  * - Simple event-based communication
  * - Works with Cloudflare Durable Objects + Hibernation API
  * - Comprehensive debugging
+ * - Native WebSocket API (no external libraries needed)
  *
  * Events from server:
  * - 'connected' - Connected to server

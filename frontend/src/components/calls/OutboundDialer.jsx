@@ -14,7 +14,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Phone, X } from 'lucide-react';
+import { Phone, X, Delete } from 'lucide-react';
 import api from '../../services/api';
 
 function OutboundDialer({ onCall, onCancel }) {
@@ -23,7 +23,6 @@ function OutboundDialer({ onCall, onCancel }) {
   const [selectedCallerId, setSelectedCallerId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [longPressTimer, setLongPressTimer] = useState(null);
 
   // Fetch available caller IDs when component mounts
   useEffect(() => {
@@ -54,41 +53,16 @@ function OutboundDialer({ onCall, onCancel }) {
     setPhoneNumber(prev => prev + digit);
   };
 
-  const handleLongPressStart = (digit) => {
-    // Long press on 0 to insert +
-    if (digit === '0') {
-      const timer = setTimeout(() => {
-        setPhoneNumber(prev => prev + '+');
-      }, 500); // 500ms long press
-      setLongPressTimer(timer);
-    }
-  };
-
-  const handleLongPressEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
-    }
-  };
-
   const handleBackspace = () => {
     setPhoneNumber(prev => prev.slice(0, -1));
   };
 
-  const handlePhoneNumberChange = (e) => {
-    // Allow only numbers, +, -, (, ), and spaces
-    const value = e.target.value.replace(/[^0-9+\-() ]/g, '');
-    setPhoneNumber(value);
-  };
-
   const handleCall = () => {
     if (!phoneNumber.trim()) {
-      alert('Please enter a phone number');
       return;
     }
 
     if (!selectedCallerId) {
-      alert('Please select a caller ID');
       return;
     }
 
@@ -112,9 +86,9 @@ function OutboundDialer({ onCall, onCancel }) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-          <div className="text-center">Loading...</div>
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-80">
+          <div className="p-6 text-center text-gray-600 dark:text-gray-400">Loading...</div>
         </div>
       </div>
     );
@@ -122,110 +96,116 @@ function OutboundDialer({ onCall, onCancel }) {
 
   if (error || callerIds.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Make Call</h2>
+      <div className="fixed bottom-6 right-6 z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-80">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-red-500 to-rose-600 p-4 rounded-t-2xl">
+            <div className="flex justify-between items-center">
+              <h3 className="text-white text-lg font-semibold">Make Call</h3>
+              <button
+                onClick={onCancel}
+                className="text-white/80 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="p-6">
+            <div className="text-center text-red-600 dark:text-red-400 text-sm mb-4">
+              {error || 'No phone numbers available. You must be assigned to an inbox with a phone number to make calls.'}
+            </div>
             <button
               onClick={onCancel}
-              className="text-gray-400 hover:text-gray-600"
+              className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
             >
-              <X className="w-5 h-5" />
+              Close
             </button>
           </div>
-          <div className="text-center text-red-600 mb-4">
-            {error || 'No phone numbers available. You must be assigned to an inbox with a phone number to make calls.'}
-          </div>
-          <button
-            onClick={onCancel}
-            className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-          >
-            Close
-          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm sm:max-w-md">
-        <div className="p-3 sm:p-4 md:p-6">
-          {/* Header - Compact */}
-          <div className="flex justify-between items-center mb-2 sm:mb-3">
-            <h2 className="text-lg sm:text-xl font-semibold">Make Call</h2>
+    <div className="fixed bottom-6 right-6 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-80">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-4 rounded-t-2xl">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-white text-lg font-semibold">Make Call</h3>
             <button
               onClick={onCancel}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-white/80 hover:text-white"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Caller ID Selection - Compact */}
-          <div className="mb-2 sm:mb-3">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-              From
+          {/* Caller ID Selection - in header */}
+          <div>
+            <label className="block text-xs text-white/70 mb-1">
+              Calling from
             </label>
             <select
               value={selectedCallerId}
               onChange={(e) => setSelectedCallerId(e.target.value)}
-              className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full px-2 py-1.5 text-sm bg-white/20 text-white border border-white/30 rounded-lg focus:ring-2 focus:ring-white/50 focus:outline-none"
             >
               {callerIds.map((callerId) => (
-                <option key={callerId.phoneNumber} value={callerId.phoneNumber}>
+                <option key={callerId.phoneNumber} value={callerId.phoneNumber} className="text-gray-900">
                   {callerId.phoneNumber} {callerId.inboxName ? `(${callerId.inboxName})` : ''}
                 </option>
               ))}
             </select>
           </div>
+        </div>
 
-          {/* Phone Number Input - Adaptive sizing */}
-          <div className="mb-3 sm:mb-4">
+        {/* Body */}
+        <div className="p-4">
+          {/* Phone Number Display */}
+          <div className="mb-3">
             <input
               type="tel"
               value={phoneNumber}
-              onChange={handlePhoneNumberChange}
+              onChange={(e) => setPhoneNumber(e.target.value.replace(/[^0-9+\-() ]/g, ''))}
               placeholder="Enter number"
-              className="w-full px-3 py-2 sm:py-2.5 text-xl sm:text-2xl text-center border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+              className="w-full px-3 py-2 text-xl text-center border-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 font-mono"
             />
           </div>
 
-          {/* Dialpad - Responsive sizing */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 mb-3 sm:mb-4">
+          {/* Compact Dialpad */}
+          <div className="grid grid-cols-3 gap-1.5 mb-3">
             {dialpadButtons.map((button) => (
               <button
                 key={button.digit}
                 onClick={() => handleDialpadClick(button.digit)}
-                onMouseDown={() => handleLongPressStart(button.digit)}
-                onMouseUp={handleLongPressEnd}
-                onMouseLeave={handleLongPressEnd}
-                onTouchStart={() => handleLongPressStart(button.digit)}
-                onTouchEnd={handleLongPressEnd}
-                className="aspect-square flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-lg text-lg sm:text-xl font-semibold transition-colors select-none"
+                className="h-12 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 active:bg-gray-300 dark:active:bg-gray-500 rounded-lg transition-colors select-none"
               >
-                <span>{button.digit}</span>
+                <span className="text-lg font-semibold text-gray-900 dark:text-white">{button.digit}</span>
                 {button.letters && (
-                  <span className="text-[10px] sm:text-xs text-gray-500">{button.letters}</span>
+                  <span className="text-[9px] text-gray-500 dark:text-gray-400 leading-none">{button.letters}</span>
                 )}
               </button>
             ))}
           </div>
 
-          {/* Action Buttons - Responsive sizing */}
-          <div className="flex gap-2 sm:gap-3">
+          {/* Action Buttons */}
+          <div className="flex gap-2">
             <button
               onClick={handleBackspace}
-              className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              className="flex-1 px-3 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-medium flex items-center justify-center gap-1.5"
             >
-              ← Delete
+              <Delete className="w-4 h-4" />
+              Delete
             </button>
             <button
               onClick={handleCall}
               disabled={!phoneNumber.trim() || !selectedCallerId}
-              className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-1.5 sm:gap-2"
+              className="flex-1 px-3 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-1.5"
             >
-              <Phone className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Phone className="w-4 h-4" />
               Call
             </button>
           </div>

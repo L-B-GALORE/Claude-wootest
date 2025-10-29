@@ -5,6 +5,7 @@
  *
  * Routes:
  * - GET /contacts - List all contacts with search/filter
+ * - POST /contacts - Create a new contact manually
  * - GET /contacts/:id - Get contact details
  * - PUT /contacts/:id - Update contact (name, notes, etc.)
  * - DELETE /contacts/:id - Delete contact
@@ -51,7 +52,7 @@ app.get('/', async (c) => {
       ];
     }
 
-    // Get contacts with conversation count
+    // Get contacts with conversation count and last contact date
     const contacts = await prisma.contact.findMany({
       where,
       select: {
@@ -66,6 +67,15 @@ app.get('/', async (c) => {
           select: {
             conversations: true,
           },
+        },
+        conversations: {
+          select: {
+            lastMessageAt: true,
+          },
+          orderBy: {
+            lastMessageAt: 'desc',
+          },
+          take: 1,
         },
       },
       orderBy: {
@@ -82,9 +92,15 @@ app.get('/', async (c) => {
       success: true,
       data: {
         contacts: contacts.map(contact => ({
-          ...contact,
+          id: contact.id,
+          phoneNumber: contact.phoneNumber,
+          email: contact.email,
+          name: contact.name,
+          notes: contact.notes,
+          createdAt: contact.createdAt,
+          updatedAt: contact.updatedAt,
           conversationCount: contact._count.conversations,
-          _count: undefined,
+          lastContactAt: contact.conversations[0]?.lastMessageAt || null,
         })),
         pagination: {
           total,
@@ -102,6 +118,88 @@ app.get('/', async (c) => {
         error: {
           code: 'CONTACTS_LIST_FAILED',
           message: 'Failed to retrieve contacts',
+        },
+      },
+      500
+    );
+  }
+});
+
+/**
+ * POST /contacts
+ * Create a new contact manually
+ *
+ * Body: { phoneNumber (required), name?, email?, notes? }
+ */
+app.post('/', async (c) => {
+  try {
+    const companyId = c.get('companyId');
+    const prisma = getPrisma(c.env.DATABASE_URL);
+
+    const body = await c.req.json();
+    const { phoneNumber, name, email, notes } = body;
+
+    // Validate required fields
+    if (!phoneNumber) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Phone number is required',
+          },
+        },
+        400
+      );
+    }
+
+    // Check if contact already exists for this company
+    const existingContact = await prisma.contact.findFirst({
+      where: {
+        phoneNumber,
+        companyId,
+      },
+    });
+
+    if (existingContact) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'CONTACT_EXISTS',
+            message: 'A contact with this phone number already exists',
+          },
+        },
+        409
+      );
+    }
+
+    // Create the contact
+    const contact = await prisma.contact.create({
+      data: {
+        phoneNumber,
+        name: name || null,
+        email: email ? email.toLowerCase().trim() : null,
+        notes: notes || null,
+        companyId,
+      },
+    });
+
+    return c.json(
+      {
+        success: true,
+        data: { contact },
+      },
+      201
+    );
+  } catch (error) {
+    console.error('[Contacts API] Error creating contact:', error);
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'CONTACT_CREATE_FAILED',
+          message: 'Failed to create contact',
         },
       },
       500

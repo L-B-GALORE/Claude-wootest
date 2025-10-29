@@ -16,7 +16,7 @@
  */
 
 import { normalizePhoneNumber } from '../utils/phone-normalization.js';
-import { getPrismaClient } from '../utils/prisma.js';
+import { getPrisma } from '../lib/prisma.js';
 
 /**
  * Find or create contact
@@ -32,25 +32,32 @@ import { getPrismaClient } from '../utils/prisma.js';
  * @param {string} identifiers.facebookId - Facebook Page-Scoped ID
  * @param {string} identifiers.name - Contact name (optional)
  * @param {string} defaultCountry - Default country for phone normalization (default: 'US')
+ * @param {PrismaClient} prismaInstance - Optional Prisma client instance (if not provided, must set databaseUrl)
+ * @param {string} databaseUrl - Optional database URL (if not providing prismaInstance)
  * @returns {Promise<Contact>} - Contact object
  *
  * Example:
  *   const contact = await findOrCreateContact('company-123', {
  *     phoneNumber: '(555) 123-4567',
  *     name: 'John Doe'
- *   });
+ *   }, 'US', prisma);
  *   // Returns: { id: 'contact-456', phoneNumber: '+15551234567', name: 'John Doe', ... }
  */
-export async function findOrCreateContact(companyId, identifiers, defaultCountry = 'US') {
-  const prisma = getPrismaClient();
+export async function findOrCreateContact(companyId, identifiers, defaultCountry = 'US', prismaInstance = null, databaseUrl = null) {
+  const prisma = prismaInstance || (databaseUrl ? getPrisma(databaseUrl) : null);
+
+  if (!prisma) {
+    throw new Error('Either prismaInstance or databaseUrl must be provided to findOrCreateContact');
+  }
 
   // Normalize phone numbers before processing
+  // If normalization fails, use the raw phone number as fallback
   const normalizedPhone = identifiers.phoneNumber
-    ? normalizePhoneNumber(identifiers.phoneNumber, defaultCountry)
+    ? (normalizePhoneNumber(identifiers.phoneNumber, defaultCountry) || identifiers.phoneNumber)
     : null;
 
   const normalizedWhatsApp = identifiers.whatsappId
-    ? normalizePhoneNumber(identifiers.whatsappId, defaultCountry)
+    ? (normalizePhoneNumber(identifiers.whatsappId, defaultCountry) || identifiers.whatsappId)
     : null;
 
   // Build search conditions (check all identifiers)
@@ -64,24 +71,14 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
     searchConditions.push({ email: identifiers.email.toLowerCase().trim() });
   }
 
-  if (normalizedWhatsApp) {
-    searchConditions.push({ whatsappId: normalizedWhatsApp });
-  }
-
-  if (identifiers.facebookId) {
-    searchConditions.push({ facebookId: identifiers.facebookId });
-  }
-
   // If no valid identifiers provided, throw error
   if (searchConditions.length === 0) {
-    throw new Error('At least one identifier (phone, email, WhatsApp, or Facebook ID) is required');
+    throw new Error('At least one identifier (phone or email) is required');
   }
 
   console.log('[Contact Service] Finding or creating contact for company:', companyId, {
     phoneNumber: normalizedPhone,
     email: identifiers.email,
-    whatsappId: normalizedWhatsApp,
-    facebookId: identifiers.facebookId,
   });
 
   try {
@@ -105,7 +102,6 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
     const name = identifiers.name ||
       normalizedPhone ||
       identifiers.email ||
-      normalizedWhatsApp ||
       'Unknown';
 
     contact = await prisma.contact.create({
@@ -113,8 +109,6 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
         companyId,
         phoneNumber: normalizedPhone,
         email: identifiers.email ? identifiers.email.toLowerCase().trim() : null,
-        whatsappId: normalizedWhatsApp,
-        facebookId: identifiers.facebookId,
         name,
       },
     });

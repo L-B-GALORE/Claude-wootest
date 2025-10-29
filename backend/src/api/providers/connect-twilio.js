@@ -107,10 +107,16 @@ app.post('/', async (c) => {
       apiKeySecret: apiKey.secret,
     };
 
+    console.log('[Connect Twilio] Encrypting credentials...');
+    console.log('[Connect Twilio] ENCRYPTION_KEY available:', !!c.env.ENCRYPTION_KEY);
+    console.log('[Connect Twilio] ENCRYPTION_KEY length:', c.env.ENCRYPTION_KEY?.length || 0);
+
     const encryptedCredentials = await encryptCredentials(
       credentials,
       c.env.ENCRYPTION_KEY
     );
+
+    console.log('[Connect Twilio] Credentials encrypted successfully');
 
     // Create provider record
     const provider = await prisma.provider.create({

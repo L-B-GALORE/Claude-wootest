@@ -1,0 +1,128 @@
+# GitHub Actions Workflow: Deploy to Staging Environment
+#
+# This workflow automatically deploys to staging whenever code is pushed
+# to the staging branch. Staging environment includes:
+# - Staging Cloudflare Workers (backend-staging)
+# - Staging Cloudflare Pages (frontend-staging)
+# - Staging Neon database
+# - Staging KV namespaces and R2 buckets
+#
+# Prerequisites:
+# - Add secrets in GitHub Repository Settings → Secrets and variables → Actions:
+#   - CLOUDFLARE_API_TOKEN
+#   - DATABASE_URL_STAGING
+#   - ENCRYPTION_KEY_STAGING
+#   - JWT_SECRET
+#
+# The workflow:
+# 1. Runs database migrations on staging database
+# 2. Deploys backend Worker to staging environment
+# 3. Deploys frontend to staging Pages project
+# 4. Outputs staging URLs
+
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  deploy-backend-staging:
+    runs-on: ubuntu-latest
+    name: Deploy Backend to Staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Run Database Migrations (Staging)
+        working-directory: backend
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
+
+      - name: Deploy Backend to Staging
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          command: deploy --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Set Staging Secrets
+        working-directory: backend
+        run: |
+          echo "Setting staging secrets..."
+          echo "${{ secrets.DATABASE_URL_STAGING }}" | npx wrangler secret put DATABASE_URL --env staging
+          echo "${{ secrets.ENCRYPTION_KEY_STAGING }}" | npx wrangler secret put ENCRYPTION_KEY --env staging
+          echo "${{ secrets.JWT_SECRET }}" | npx wrangler secret put JWT_SECRET --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Backend Staging Deployment Summary
+        run: |
+          echo "✅ Backend deployed to staging!"
+          echo "🌐 Staging API: https://claude-wootestnew-api-staging.lilboo.workers.dev"
+
+  deploy-frontend-staging:
+    runs-on: ubuntu-latest
+    name: Deploy Frontend to Staging
+    needs: deploy-backend-staging # Wait for backend to deploy first
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Frontend (Staging)
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: https://claude-wootestnew-api-staging.lilboo.workers.dev
+
+      - name: Deploy Frontend to Staging
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          command: pages deploy dist --project-name=claude-wootestnew --branch=staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Frontend Staging Deployment Summary
+        run: |
+          echo "✅ Frontend deployed to staging!"
+          echo "🌐 Staging App: https://staging.claude-wootestnew.pages.dev"
+          echo ""
+          echo "📝 Test your changes at the staging URLs above"
+          echo "🚀 When ready, create a PR from staging → main to deploy to production"

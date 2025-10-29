@@ -42,7 +42,7 @@ app.get('/', async (c) => {
       include: {
         _count: {
           select: {
-            members: true,
+            inboxMembers: true,
           },
         },
       },
@@ -66,7 +66,7 @@ app.get('/', async (c) => {
           id: inbox.id,
           name: inbox.name,
           description: inbox.description,
-          memberCount: inbox._count.members,
+          memberCount: inbox._count.inboxMembers,
           channelCount,
           createdAt: inbox.createdAt,
           updatedAt: inbox.updatedAt,
@@ -190,7 +190,7 @@ app.get('/:id', async (c) => {
         companyId: companyId,
       },
       include: {
-        members: {
+        inboxMembers: {
           include: {
             user: {
               select: {
@@ -204,7 +204,7 @@ app.get('/:id', async (c) => {
         },
         _count: {
           select: {
-            members: true,
+            inboxMembers: true,
           },
         },
       },
@@ -230,13 +230,13 @@ app.get('/:id', async (c) => {
           id: inbox.id,
           name: inbox.name,
           description: inbox.description,
-          members: inbox.members.map((m) => ({
+          members: inbox.inboxMembers.map((m) => ({
             id: m.id,
             userId: m.userId,
             user: m.user,
             joinedAt: m.createdAt,
           })),
-          memberCount: inbox._count.members,
+          memberCount: inbox._count.inboxMembers,
           createdAt: inbox.createdAt,
           updatedAt: inbox.updatedAt,
         },
@@ -334,7 +334,7 @@ app.patch('/:id', async (c) => {
       include: {
         _count: {
           select: {
-            members: true,
+            inboxMembers: true,
           },
         },
       },
@@ -347,7 +347,7 @@ app.patch('/:id', async (c) => {
           id: updatedInbox.id,
           name: updatedInbox.name,
           description: updatedInbox.description,
-          memberCount: updatedInbox._count.members,
+          memberCount: updatedInbox._count.inboxMembers,
           createdAt: updatedInbox.createdAt,
           updatedAt: updatedInbox.updatedAt,
         },

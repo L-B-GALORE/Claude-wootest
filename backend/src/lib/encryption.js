@@ -68,6 +68,12 @@ export async function encrypt(text, encryptionKey) {
   }
 
   try {
+    // Validate encryption key format (should be 64 hex characters for 256-bit)
+    if (!/^[0-9a-fA-F]{64}$/.test(encryptionKey)) {
+      console.error('[Encryption] Invalid key format. Expected 64 hex characters, got:', encryptionKey?.length || 0, 'characters');
+      throw new Error('ENCRYPTION_KEY must be a 64-character hex string (256 bits)');
+    }
+
     // Convert hex key to ArrayBuffer
     const keyData = hexToArrayBuffer(encryptionKey);
 
@@ -110,8 +116,13 @@ export async function encrypt(text, encryptionKey) {
 
     return `${ivBase64}:${authTagBase64}:${ciphertextBase64}`;
   } catch (error) {
-    console.error('Encryption failed:', error);
-    throw new Error('Failed to encrypt data');
+    console.error('[Encryption] Encryption failed:', error);
+    console.error('[Encryption] Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    });
+    throw error; // Re-throw the original error instead of generic message
   }
 }
 

@@ -56,8 +56,8 @@ class SocketManager {
 
     console.log(`[SocketManager] Connecting... userId: ${userId}, companyId: ${companyId}`);
 
-    // Build WebSocket URL
-    const apiUrl = import.meta.env.VITE_API_URL || window.location.origin;
+    // Build WebSocket URL - use same default as api.js
+    const apiUrl = import.meta.env.VITE_API_URL || 'https://claude-wootestnew-api.lilboo.workers.dev';
     const wsUrl = apiUrl.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
     this.socketUrl = `${wsUrl}/ws/company/${companyId}?userId=${userId}&companyId=${companyId}`;
 

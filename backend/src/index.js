@@ -42,8 +42,9 @@ import inboxRoutes from './api/inboxes/index.js';
 import userRoutes from './api/users/index.js';
 import voiceRoutes from './api/voice/index.js';
 import companyRoutes from './api/company/index.js';
-// import conversationRoutes from './api/conversations';
-// import messageRoutes from './api/messages';
+import contactRoutes from './api/contacts/index.js';
+import callRoutes from './api/calls/index.js';
+import conversationRoutes from './api/conversations/index.js';
 
 // Import webhook routes (no auth required - called by external services)
 import webhookRoutes from './webhooks/index.js';
@@ -65,7 +66,11 @@ const app = new Hono();
 app.use('*', logger()); // Log all requests
 app.use('*', prettyJSON()); // Pretty JSON responses in development
 app.use('*', cors({
-  origin: ['http://localhost:5173', 'https://claude-wootestnew.pages.dev'],
+  origin: [
+    'http://localhost:5173',
+    'https://claude-wootestnew.pages.dev',
+    'https://staging.claude-wootestnew.pages.dev'
+  ],
   credentials: true,
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
@@ -136,6 +141,15 @@ api.route('/voice', voiceRoutes);
 
 api.use('/company/*', authMiddleware);
 api.route('/company', companyRoutes);
+
+api.use('/contacts/*', authMiddleware);
+api.route('/contacts', contactRoutes);
+
+api.use('/calls/*', authMiddleware);
+api.route('/calls', callRoutes);
+
+api.use('/conversations/*', authMiddleware);
+api.route('/conversations', conversationRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

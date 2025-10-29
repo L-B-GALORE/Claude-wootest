@@ -1,29 +1,16 @@
-# GitHub Actions Workflow: Deploy Frontend to Cloudflare Pages
+# GitHub Actions Workflow: Deploy Frontend to Cloudflare Pages (DEPRECATED)
 #
-# This workflow automatically builds and deploys the React frontend
-# to Cloudflare Pages whenever code is pushed.
+# ⚠️ DEPRECATED: This workflow is deprecated in favor of:
+# - deploy-staging.yml (for staging branch)
+# - deploy-production.yml (for main branch)
 #
-# Prerequisites:
-# - Add CLOUDFLARE_API_TOKEN as a GitHub Repository Secret
-# - Add CLOUDFLARE_ACCOUNT_ID as a GitHub Repository Secret (or use hardcoded value)
-#
-# The workflow:
-# 1. Installs dependencies
-# 2. Builds the React app with Vite
-# 3. Deploys to Cloudflare Pages
-# 4. Outputs the deployment URL
+# This workflow is kept for manual deployments only.
+# Use deploy-staging.yml or deploy-production.yml for automated deployments.
 
-name: Deploy Frontend to Cloudflare Pages
+name: Deploy Frontend to Cloudflare Pages (Legacy)
 
 on:
-  push:
-    branches:
-      - main
-      - claude/**
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/deploy-frontend.yml'
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: # Manual triggering only
 
 jobs:
   deploy:
@@ -50,7 +37,6 @@ jobs:
         run: npm run build
         env:
           VITE_API_URL: https://claude-wootestnew-api.lilboo.workers.dev
-          VITE_WS_URL: wss://claude-wootestnew-api.lilboo.workers.dev/ws
 
       - name: Create Pages project if not exists
         continue-on-error: true
@@ -66,7 +52,6 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: f09bbb81e8be554d6e67b5de063d8925
           command: pages deploy frontend/dist --project-name=claude-wootestnew --branch=${{ github.ref_name }}
-
 
       - name: Deployment Summary
         run: |

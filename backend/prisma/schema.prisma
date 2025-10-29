@@ -68,13 +68,14 @@ model User {
   lastActiveAt DateTime? @map("last_active_at")
 
   // Relations
-  company               Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  preferences           UserPreference[]
-  inboxMemberships      InboxMember[]
+  company             Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  preferences         UserPreference[]
+  inboxMemberships    InboxMember[]
+  privateChannels     PrivateChannel[]
   assignedConversations Conversation[]
-  sentMessages          Message[]      @relation("UserSentMessages")
-  answeredCalls         VoiceCall[]
-  activityLogs          ActivityLog[]
+  sentMessages        Message[]          @relation("UserSentMessages")
+  answeredCalls       VoiceCall[]
+  activityLogs        ActivityLog[]
 
   @@unique([companyId, email])
   @@index([companyId])
@@ -141,23 +142,14 @@ model Provider {
 }
 
 enum ChannelType {
-  PHONE              // Voice, SMS, MMS
-  EMAIL              // Email messages
-  WHATSAPP           // WhatsApp messages
-  MESSENGER          // Facebook Messenger
-  INSTAGRAM          // Instagram DMs
+  PHONE              // Phone number (can handle both voice and SMS)
+  VOICE
+  SMS
+  EMAIL
+  WHATSAPP
+  FACEBOOK_MESSENGER
 
   @@map("channel_type")
-}
-
-enum RoutingType {
-  UNASSIGNED         // Channel exists but not routing anywhere
-  INBOX              // Routes to an inbox (team)
-  USER               // Routes to a specific user (private line)
-  VOICEMAIL          // Goes directly to voicemail (future)
-  CUSTOM             // Custom routing logic (future)
-
-  @@map("routing_type")
 }
 
 enum ChannelStatus {
@@ -167,34 +159,44 @@ enum ChannelStatus {
   @@map("channel_status")
 }
 
+enum RoutingType {
+  UNASSIGNED
+  INBOX
+  USER
+  VOICEMAIL
+  CUSTOM
+
+  @@map("routing_type")
+}
+
 model Channel {
-  id           String        @id @default(uuid())
-  companyId    String        @map("company_id")
-  providerId   String        @map("provider_id")
-  type         ChannelType
-  identifier   String        // Phone number (E.164), email address, WhatsApp number, etc.
-  capabilities Json          // Array: ["voice", "sms", "mms"] for PHONE or ["email"] for EMAIL
-  status       ChannelStatus @default(ACTIVE)
-  metadata     Json?         // Channel-specific config (Twilio SID, friendly name, etc.)
-
-  // Routing configuration
-  routingType      RoutingType @default(UNASSIGNED) @map("routing_type")
-  routingTargetId  String?     @map("routing_target_id") // inboxId or userId depending on routingType
-
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id              String        @id @default(uuid())
+  companyId       String        @map("company_id")
+  providerId      String        @map("provider_id")
+  type            ChannelType
+  identifier      String        // Phone number, email address, WhatsApp number, etc.
+  capabilities    Json          // Array: ["voice", "sms"] or ["email"]
+  status          ChannelStatus @default(ACTIVE)
+  routingType     RoutingType   @default(UNASSIGNED) @map("routing_type")
+  routingTargetId String?       @map("routing_target_id")
+  metadata        Json?         // Channel-specific config
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
 
   // Relations
-  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  provider      Provider       @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider         Provider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  inboxChannels    InboxChannel[]
+  privateChannels  PrivateChannel[]
+  conversations    Conversation[]
+  voiceCalls       VoiceCall[]
 
   @@unique([companyId, identifier])
   @@index([companyId])
   @@index([providerId])
-  @@index([type])
   @@index([routingType])
   @@index([routingTargetId])
+  @@index([type])
   @@map("channels")
 }
 
@@ -212,11 +214,28 @@ model Inbox {
 
   // Relations
   company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  members           InboxMember[]
+  inboxChannels     InboxChannel[]
+  inboxMembers      InboxMember[]
   routingStrategies RoutingStrategy[]
 
   @@index([companyId])
   @@map("inboxes")
+}
+
+model InboxChannel {
+  id        String   @id @default(uuid())
+  inboxId   String   @map("inbox_id")
+  channelId String   @map("channel_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  inbox   Inbox   @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([inboxId, channelId])
+  @@index([inboxId])
+  @@index([channelId])
+  @@map("inbox_channels")
 }
 
 model InboxMember {
@@ -233,6 +252,23 @@ model InboxMember {
   @@index([inboxId])
   @@index([userId])
   @@map("inbox_members")
+}
+
+model PrivateChannel {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  channelId String   @map("channel_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@unique([channelId])
+  @@index([userId])
+  @@index([channelId])
+  @@map("private_channels")
 }
 
 // ============================================================================
@@ -272,14 +308,8 @@ model RoutingStrategy {
 model Contact {
   id           String   @id @default(uuid())
   companyId    String   @map("company_id")
-
-  // Contact identifiers (at least one required, stored in E.164 format for phone numbers)
-  phoneNumber  String?  @map("phone_number")  // E.164 format: +15551234567
+  phoneNumber  String?  @map("phone_number")
   email        String?
-  whatsappId   String?  @map("whatsapp_id")   // WhatsApp phone number (E.164 format)
-  facebookId   String?  @map("facebook_id")   // Facebook Page-Scoped ID
-
-  // Contact details
   name         String?
   notes        String?
   customFields Json?    @map("custom_fields")
@@ -289,17 +319,11 @@ model Contact {
   // Relations
   company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  voiceCalls    VoiceCall[]
 
-  // Unique constraints - prevent duplicate contacts per company
-  @@unique([companyId, phoneNumber], name: "unique_company_phone")
-  @@unique([companyId, email], name: "unique_company_email")
-  @@unique([companyId, whatsappId], name: "unique_company_whatsapp")
-  @@unique([companyId, facebookId], name: "unique_company_facebook")
-
-  // Indexes for fast lookups
   @@index([companyId])
-  @@index([companyId, phoneNumber])
-  @@index([companyId, email])
+  @@index([phoneNumber])
+  @@index([email])
   @@map("contacts")
 }
 
@@ -434,20 +458,27 @@ enum CallStatus {
 }
 
 model VoiceCall {
-  id               String     @id @default(uuid())
-  messageId        String     @unique @map("message_id")
-  providerCallId   String     @map("provider_call_id") // Twilio SID, Plivo UUID
-  durationSeconds  Int?       @map("duration_seconds")
-  recordingUrl     String?    @map("recording_url")
-  answeredByUserId String?    @map("answered_by_user_id")
-  callStatus       CallStatus @map("call_status")
-  createdAt        DateTime   @default(now()) @map("created_at")
-  endedAt          DateTime?  @map("ended_at")
+  id               String            @id @default(uuid())
+  contactId        String            @map("contact_id")
+  channelId        String            @map("channel_id")
+  messageId        String?           @unique @map("message_id")
+  providerCallId   String            @map("provider_call_id") // Twilio SID, Plivo UUID
+  direction        MessageDirection
+  durationSeconds  Int?              @map("duration_seconds")
+  recordingUrl     String?           @map("recording_url")
+  answeredByUserId String?           @map("answered_by_user_id")
+  callStatus       CallStatus        @map("call_status")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  endedAt          DateTime?         @map("ended_at")
 
   // Relations
-  message        Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  answeredByUser User?   @relation(fields: [answeredByUserId], references: [id], onDelete: SetNull)
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel        Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message        Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  answeredByUser User?    @relation(fields: [answeredByUserId], references: [id], onDelete: SetNull)
 
+  @@index([contactId])
+  @@index([channelId])
   @@index([providerCallId])
   @@map("voice_calls")
 }

@@ -1,0 +1,186 @@
+# GitHub Actions Workflow: Rollback Production Deployment
+#
+# This workflow allows you to quickly rollback production to a previous
+# release in case of critical issues. It requires manual triggering and
+# uses git tags created during production deployments.
+#
+# How to use:
+# 1. Go to Actions → Rollback Production
+# 2. Click "Run workflow"
+# 3. Enter the release tag to rollback to (e.g., release-20251029-120000)
+# 4. Confirm and run
+#
+# ⚠️ WARNING: Database migrations cannot be automatically rolled back.
+# If the issue involves database changes, you may need to manually
+# create a migration to revert the schema changes.
+#
+# Prerequisites:
+# - Same secrets as production deployment
+# - Release tags created by deploy-production.yml
+#
+# The workflow:
+# 1. Checks out the code at the specified tag
+# 2. Deploys backend to production
+# 3. Deploys frontend to production
+# 4. Notifies about database migration considerations
+
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to rollback to (e.g., release-20251029-120000)'
+        required: true
+        type: string
+      skip_database_check:
+        description: 'Skip database migration warning (use with caution)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  validate-rollback:
+    runs-on: ubuntu-latest
+    name: Validate Rollback Request
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history and tags
+
+      - name: Verify Tag Exists
+        run: |
+          if ! git rev-parse "${{ inputs.release_tag }}" >/dev/null 2>&1; then
+            echo "❌ Error: Tag '${{ inputs.release_tag }}' does not exist"
+            echo "Available recent release tags:"
+            git tag -l "release-*" | tail -10
+            exit 1
+          fi
+          echo "✅ Tag '${{ inputs.release_tag }}' found"
+
+      - name: Database Migration Warning
+        if: ${{ !inputs.skip_database_check }}
+        run: |
+          echo "⚠️ WARNING: Database migrations cannot be automatically rolled back!"
+          echo ""
+          echo "If database schema changes were made since this release, you may need to:"
+          echo "1. Create a new migration to revert schema changes"
+          echo "2. Manually restore from a database backup"
+          echo ""
+          echo "Current release: ${{ inputs.release_tag }}"
+          echo ""
+          echo "Proceeding with code rollback in 10 seconds..."
+          sleep 10
+
+  rollback-backend:
+    runs-on: ubuntu-latest
+    name: Rollback Backend
+    needs: validate-rollback
+    environment:
+      name: production
+      url: https://claude-wootestnew-api.lilboo.workers.dev
+
+    steps:
+      - name: Checkout code at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Deploy Backend to Production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          command: deploy --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Backend Rollback Summary
+        run: |
+          echo "✅ Backend rolled back to ${{ inputs.release_tag }}"
+          echo "🌐 Production API: https://claude-wootestnew-api.lilboo.workers.dev"
+
+  rollback-frontend:
+    runs-on: ubuntu-latest
+    name: Rollback Frontend
+    needs: rollback-backend
+    environment:
+      name: production
+      url: https://claude-wootest.pages.dev
+
+    steps:
+      - name: Checkout code at tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Frontend (Production)
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: https://claude-wootestnew-api.lilboo.workers.dev
+
+      - name: Deploy Frontend to Production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          command: pages deploy dist --project-name=claude-wootest --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Frontend Rollback Summary
+        run: |
+          echo "✅ Frontend rolled back to ${{ inputs.release_tag }}"
+          echo "🌐 Production App: https://claude-wootest.pages.dev"
+
+  rollback-complete:
+    runs-on: ubuntu-latest
+    name: Rollback Complete
+    needs: [rollback-backend, rollback-frontend]
+
+    steps:
+      - name: Rollback Summary
+        run: |
+          echo "✅ Rollback to ${{ inputs.release_tag }} complete!"
+          echo ""
+          echo "🌐 Production URLs:"
+          echo "   - API: https://claude-wootestnew-api.lilboo.workers.dev"
+          echo "   - App: https://claude-wootest.pages.dev"
+          echo ""
+          echo "⚠️ Remember to check:"
+          echo "   - Database compatibility"
+          echo "   - Any manual configuration changes"
+          echo "   - Third-party integrations"
+          echo ""
+          echo "📝 Consider creating a hotfix branch from this release if needed"

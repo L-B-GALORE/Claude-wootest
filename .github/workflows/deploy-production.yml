@@ -1,0 +1,169 @@
+# GitHub Actions Workflow: Deploy to Production Environment
+#
+# This workflow deploys to production with MANUAL APPROVAL required.
+# It triggers when code is pushed to the main branch, but requires
+# approval from a designated reviewer before proceeding.
+#
+# Production environment includes:
+# - Production Cloudflare Workers (backend)
+# - Production Cloudflare Pages (frontend)
+# - Production Neon database
+# - Production KV namespaces and R2 buckets
+#
+# Prerequisites:
+# - Add secrets in GitHub Repository Settings → Secrets and variables → Actions:
+#   - CLOUDFLARE_API_TOKEN
+#   - DATABASE_URL_PRODUCTION
+#   - ENCRYPTION_KEY_PRODUCTION
+#   - JWT_SECRET
+# - Configure environment protection rules:
+#   Settings → Environments → production → Add required reviewers
+#
+# The workflow:
+# 1. Waits for manual approval from designated reviewer
+# 2. Runs database migrations on production database
+# 3. Deploys backend Worker to production environment
+# 4. Deploys frontend to production Pages project
+# 5. Creates a git tag for rollback capability
+# 6. Outputs production URLs
+
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  deploy-backend-production:
+    runs-on: ubuntu-latest
+    name: Deploy Backend to Production
+    environment:
+      name: production
+      url: https://claude-wootestnew-api.lilboo.workers.dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Run Database Migrations (Production)
+        working-directory: backend
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
+
+      - name: Deploy Backend to Production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: backend
+          command: deploy --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Set Production Secrets
+        working-directory: backend
+        run: |
+          echo "Setting production secrets..."
+          echo "${{ secrets.DATABASE_URL_PRODUCTION }}" | npx wrangler secret put DATABASE_URL --env production
+          echo "${{ secrets.ENCRYPTION_KEY_PRODUCTION }}" | npx wrangler secret put ENCRYPTION_KEY --env production
+          echo "${{ secrets.JWT_SECRET }}" | npx wrangler secret put JWT_SECRET --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Backend Production Deployment Summary
+        run: |
+          echo "✅ Backend deployed to production!"
+          echo "🌐 Production API: https://claude-wootestnew-api.lilboo.workers.dev"
+
+  deploy-frontend-production:
+    runs-on: ubuntu-latest
+    name: Deploy Frontend to Production
+    environment:
+      name: production
+      url: https://claude-wootestnew.pages.dev
+    needs: deploy-backend-production # Wait for backend to deploy first
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Frontend (Production)
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: https://claude-wootestnew-api.lilboo.workers.dev
+
+      - name: Deploy Frontend to Production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          command: pages deploy dist --project-name=claude-wootestnew --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Frontend Production Deployment Summary
+        run: |
+          echo "✅ Frontend deployed to production!"
+          echo "🌐 Production App: https://claude-wootestnew.pages.dev"
+
+  create-release-tag:
+    runs-on: ubuntu-latest
+    name: Create Release Tag
+    needs: [deploy-backend-production, deploy-frontend-production]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create Git Tag
+        run: |
+          TAG_NAME="release-$(date +%Y%m%d-%H%M%S)"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a "$TAG_NAME" -m "Production deployment: $TAG_NAME"
+          git push origin "$TAG_NAME"
+          echo "📦 Created release tag: $TAG_NAME"
+          echo "🔄 Use this tag for rollback if needed"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deployment Complete
+        run: |
+          echo "✅ Production deployment complete!"
+          echo ""
+          echo "🌐 Production URLs:"
+          echo "   - API: https://claude-wootestnew-api.lilboo.workers.dev"
+          echo "   - App: https://claude-wootestnew.pages.dev"
+          echo ""
+          echo "📦 Release tag created for rollback capability"

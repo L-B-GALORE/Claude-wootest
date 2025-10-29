@@ -141,6 +141,7 @@ model Provider {
 }
 
 enum ChannelType {
+  PHONE              // Phone number (can handle both voice and SMS)
   VOICE
   SMS
   EMAIL
@@ -157,17 +158,29 @@ enum ChannelStatus {
   @@map("channel_status")
 }
 
+enum RoutingType {
+  UNASSIGNED
+  INBOX
+  USER
+  VOICEMAIL
+  CUSTOM
+
+  @@map("routing_type")
+}
+
 model Channel {
-  id           String        @id @default(uuid())
-  companyId    String        @map("company_id")
-  providerId   String        @map("provider_id")
-  type         ChannelType
-  identifier   String        // Phone number, email address, WhatsApp number, etc.
-  capabilities Json          // Array: ["voice", "sms"] or ["email"]
-  status       ChannelStatus @default(ACTIVE)
-  metadata     Json?         // Channel-specific config
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  id              String        @id @default(uuid())
+  companyId       String        @map("company_id")
+  providerId      String        @map("provider_id")
+  type            ChannelType
+  identifier      String        // Phone number, email address, WhatsApp number, etc.
+  capabilities    Json          // Array: ["voice", "sms"] or ["email"]
+  status          ChannelStatus @default(ACTIVE)
+  routingType     RoutingType   @default(UNASSIGNED) @map("routing_type")
+  routingTargetId String?       @map("routing_target_id")
+  metadata        Json?         // Channel-specific config
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
 
   // Relations
   company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -175,10 +188,13 @@ model Channel {
   inboxChannels    InboxChannel[]
   privateChannels  PrivateChannel[]
   conversations    Conversation[]
+  voiceCalls       VoiceCall[]
 
   @@unique([companyId, identifier])
   @@index([companyId])
   @@index([providerId])
+  @@index([routingType])
+  @@index([routingTargetId])
   @@index([type])
   @@map("channels")
 }
@@ -302,6 +318,7 @@ model Contact {
   // Relations
   company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  voiceCalls    VoiceCall[]
 
   @@index([companyId])
   @@index([phoneNumber])
@@ -440,20 +457,27 @@ enum CallStatus {
 }
 
 model VoiceCall {
-  id               String     @id @default(uuid())
-  messageId        String     @unique @map("message_id")
-  providerCallId   String     @map("provider_call_id") // Twilio SID, Plivo UUID
-  durationSeconds  Int?       @map("duration_seconds")
-  recordingUrl     String?    @map("recording_url")
-  answeredByUserId String?    @map("answered_by_user_id")
-  callStatus       CallStatus @map("call_status")
-  createdAt        DateTime   @default(now()) @map("created_at")
-  endedAt          DateTime?  @map("ended_at")
+  id               String            @id @default(uuid())
+  contactId        String            @map("contact_id")
+  channelId        String            @map("channel_id")
+  messageId        String?           @unique @map("message_id")
+  providerCallId   String            @map("provider_call_id") // Twilio SID, Plivo UUID
+  direction        MessageDirection
+  durationSeconds  Int?              @map("duration_seconds")
+  recordingUrl     String?           @map("recording_url")
+  answeredByUserId String?           @map("answered_by_user_id")
+  callStatus       CallStatus        @map("call_status")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  endedAt          DateTime?         @map("ended_at")
 
   // Relations
-  message        Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  answeredByUser User?   @relation(fields: [answeredByUserId], references: [id], onDelete: SetNull)
+  contact        Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  channel        Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message        Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  answeredByUser User?    @relation(fields: [answeredByUserId], references: [id], onDelete: SetNull)
 
+  @@index([contactId])
+  @@index([channelId])
   @@index([providerCallId])
   @@map("voice_calls")
 }

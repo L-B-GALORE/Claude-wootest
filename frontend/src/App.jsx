@@ -28,6 +28,8 @@ import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ConversationsPage from './pages/conversations/ConversationsPage';
+import ContactsPage from './pages/contacts/ContactsPage';
+import CallHistoryPage from './pages/calls/CallHistoryPage';
 
 // Settings Pages (each has its own layout wrapper)
 import ProvidersPage from './pages/settings/ProvidersPage';
@@ -74,6 +76,8 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/contacts" element={<ContactsPage />} />
+        <Route path="/calls" element={<CallHistoryPage />} />
         <Route path="/conversations" element={<ConversationsPage />} />
       </Route>
 

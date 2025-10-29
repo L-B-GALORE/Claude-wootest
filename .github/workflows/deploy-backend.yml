@@ -1,28 +1,16 @@
-# GitHub Actions Workflow: Deploy Backend to Cloudflare Workers
+# GitHub Actions Workflow: Deploy Backend to Cloudflare Workers (DEPRECATED)
 #
-# This workflow automatically deploys the backend Worker to Cloudflare
-# whenever code is pushed to the main branch or the current feature branch.
+# ⚠️ DEPRECATED: This workflow is deprecated in favor of:
+# - deploy-staging.yml (for staging branch)
+# - deploy-production.yml (for main branch)
 #
-# Prerequisites:
-# - Add CLOUDFLARE_API_TOKEN as a GitHub Repository Secret
-#   (Settings → Secrets and variables → Actions → New repository secret)
-#
-# The workflow:
-# 1. Installs dependencies
-# 2. Deploys the Worker using Wrangler
-# 3. Outputs the deployment URL
+# This workflow is kept for manual deployments only.
+# Use deploy-staging.yml or deploy-production.yml for automated deployments.
 
-name: Deploy Backend to Cloudflare Workers
+name: Deploy Backend to Cloudflare Workers (Legacy)
 
 on:
-  push:
-    branches:
-      - main
-      - claude/**
-    paths:
-      - 'backend/**'
-      - '.github/workflows/deploy-backend.yml'
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch: # Manual triggering only
 
 jobs:
   deploy:
@@ -52,14 +40,15 @@ jobs:
         working-directory: backend
         run: npx prisma db push --accept-data-loss
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION }}
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: backend
-          command: deploy
+          command: deploy --env production
 
       - name: Deployment Summary
         run: |

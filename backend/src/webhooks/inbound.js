@@ -22,8 +22,67 @@ import { Hono } from 'hono';
 import { getPrisma } from '../lib/prisma.js';
 import { validateWebhookSignature } from '../lib/twilio.js';
 import { decryptCredentials } from '../lib/encryption.js';
+import { findOrCreateContact } from '../services/contact-service.js';
 
 const app = new Hono();
+
+/**
+ * Find or create conversation for contact-channel pair
+ *
+ * For voice calls, each call is a separate TRANSACTIONAL conversation.
+ * For SMS, conversations are LINEAR (ongoing thread per contact-channel).
+ *
+ * @param {object} prisma - Prisma client
+ * @param {string} companyId - Company ID
+ * @param {string} contactId - Contact ID
+ * @param {string} channelId - Channel ID
+ * @param {string} type - Conversation type (TRANSACTIONAL or LINEAR)
+ * @returns {Promise<object>} - Conversation object
+ */
+async function findOrCreateConversation(prisma, companyId, contactId, channelId, type) {
+  // For TRANSACTIONAL (voice calls), always create a new conversation
+  if (type === 'TRANSACTIONAL') {
+    return await prisma.conversation.create({
+      data: {
+        companyId,
+        contactId,
+        channelId,
+        type,
+        status: 'OPEN',
+        lastMessageAt: new Date(),
+      },
+    });
+  }
+
+  // For LINEAR (SMS), find existing or create new
+  let conversation = await prisma.conversation.findFirst({
+    where: {
+      companyId,
+      contactId,
+      channelId,
+      type: 'LINEAR',
+      status: { not: 'ARCHIVED' }, // Don't reuse archived conversations
+    },
+    orderBy: {
+      lastMessageAt: 'desc',
+    },
+  });
+
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        companyId,
+        contactId,
+        channelId,
+        type: 'LINEAR',
+        status: 'OPEN',
+        lastMessageAt: new Date(),
+      },
+    });
+  }
+
+  return conversation;
+}
 
 /**
  * Generate TwiML response for RING_ALL strategy
@@ -149,6 +208,95 @@ app.post('/:channelId', async (c) => {
     // Determine if this is voice or SMS
     const isVoice = body.CallSid ? true : false;
     const isSMS = body.MessageSid ? true : false;
+
+    // ========================================================================
+    // CALL/SMS LOGGING - Create Contact, Conversation, Message, VoiceCall/SmsMessage
+    // ========================================================================
+
+    let contact = null;
+    let conversation = null;
+    let message = null;
+    let voiceCall = null;
+    let smsMessage = null;
+
+    try {
+      console.log('[Inbound] Creating/finding contact for:', body.From);
+
+      // 1. Find or create contact from caller
+      contact = await findOrCreateContact(
+        channel.companyId,
+        {
+          phoneNumber: body.From,
+        },
+        'US', // Default country
+        prisma // Pass prisma instance
+      );
+
+      console.log('[Inbound] Contact:', contact.id, contact.name);
+
+      // 2. Create/find conversation based on type
+      const conversationType = isVoice ? 'TRANSACTIONAL' : 'LINEAR';
+      conversation = await findOrCreateConversation(
+        prisma,
+        channel.companyId,
+        contact.id,
+        channel.id,
+        conversationType
+      );
+
+      console.log('[Inbound] Conversation:', conversation.id, conversationType);
+
+      // 3. Create message record
+      const messageBody = isVoice
+        ? `Incoming call from ${body.From}`
+        : body.Body || '(No message body)';
+
+      message = await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          direction: 'INBOUND',
+          senderType: 'CONTACT',
+          body: messageBody,
+          status: 'SENT',
+        },
+      });
+
+      console.log('[Inbound] Message created:', message.id);
+
+      // 4. Create type-specific record
+      if (isVoice) {
+        voiceCall = await prisma.voiceCall.create({
+          data: {
+            messageId: message.id,
+            providerCallId: body.CallSid,
+            callStatus: 'RINGING',
+          },
+        });
+
+        console.log('[Inbound] VoiceCall created:', voiceCall.id, 'CallSid:', body.CallSid);
+      } else if (isSMS) {
+        smsMessage = await prisma.smsMessage.create({
+          data: {
+            messageId: message.id,
+            providerMessageId: body.MessageSid,
+            segments: body.NumSegments ? parseInt(body.NumSegments, 10) : 1,
+            providerStatus: body.SmsStatus || 'received',
+          },
+        });
+
+        console.log('[Inbound] SmsMessage created:', smsMessage.id, 'MessageSid:', body.MessageSid);
+      }
+
+      console.log('[Inbound] ✅ Successfully logged communication to database');
+    } catch (loggingError) {
+      console.error('[Inbound] ⚠️ Failed to log to database (call will continue):', loggingError);
+      // Don't fail the request - let the call/SMS still route properly
+      // The important thing is that communication still works even if logging fails
+    }
+
+    // ========================================================================
+    // ROUTING LOGIC (unchanged from original)
+    // ========================================================================
 
     if (isVoice) {
       // Handle voice call routing

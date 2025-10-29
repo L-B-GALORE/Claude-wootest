@@ -16,7 +16,7 @@
  */
 
 import { normalizePhoneNumber } from '../utils/phone-normalization.js';
-import { getPrismaClient } from '../utils/prisma.js';
+import { getPrisma } from '../lib/prisma.js';
 
 /**
  * Find or create contact
@@ -32,17 +32,23 @@ import { getPrismaClient } from '../utils/prisma.js';
  * @param {string} identifiers.facebookId - Facebook Page-Scoped ID
  * @param {string} identifiers.name - Contact name (optional)
  * @param {string} defaultCountry - Default country for phone normalization (default: 'US')
+ * @param {PrismaClient} prismaInstance - Optional Prisma client instance (if not provided, must set databaseUrl)
+ * @param {string} databaseUrl - Optional database URL (if not providing prismaInstance)
  * @returns {Promise<Contact>} - Contact object
  *
  * Example:
  *   const contact = await findOrCreateContact('company-123', {
  *     phoneNumber: '(555) 123-4567',
  *     name: 'John Doe'
- *   });
+ *   }, 'US', prisma);
  *   // Returns: { id: 'contact-456', phoneNumber: '+15551234567', name: 'John Doe', ... }
  */
-export async function findOrCreateContact(companyId, identifiers, defaultCountry = 'US') {
-  const prisma = getPrismaClient();
+export async function findOrCreateContact(companyId, identifiers, defaultCountry = 'US', prismaInstance = null, databaseUrl = null) {
+  const prisma = prismaInstance || (databaseUrl ? getPrisma(databaseUrl) : null);
+
+  if (!prisma) {
+    throw new Error('Either prismaInstance or databaseUrl must be provided to findOrCreateContact');
+  }
 
   // Normalize phone numbers before processing
   const normalizedPhone = identifiers.phoneNumber

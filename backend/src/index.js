@@ -42,6 +42,8 @@ import inboxRoutes from './api/inboxes/index.js';
 import userRoutes from './api/users/index.js';
 import voiceRoutes from './api/voice/index.js';
 import companyRoutes from './api/company/index.js';
+import contactRoutes from './api/contacts/index.js';
+import callRoutes from './api/calls/index.js';
 // import conversationRoutes from './api/conversations';
 // import messageRoutes from './api/messages';
 
@@ -136,6 +138,12 @@ api.route('/voice', voiceRoutes);
 
 api.use('/company/*', authMiddleware);
 api.route('/company', companyRoutes);
+
+api.use('/contacts/*', authMiddleware);
+api.route('/contacts', contactRoutes);
+
+api.use('/calls/*', authMiddleware);
+api.route('/calls', callRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

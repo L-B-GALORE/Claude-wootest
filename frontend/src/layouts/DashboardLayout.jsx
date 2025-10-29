@@ -18,7 +18,7 @@
  */
 
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, MessageSquare, Settings, LogOut, Moon, Sun, User } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Users, Phone, Settings, LogOut, Moon, Sun, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import CallManager from '../components/calls/CallManager';
@@ -37,6 +37,8 @@ function DashboardLayout() {
 
   const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/contacts', label: 'Contacts', icon: Users },
+    { path: '/calls', label: 'Call History', icon: Phone },
     { path: '/conversations', label: 'Conversations', icon: MessageSquare },
     { path: '/settings', label: 'Settings', icon: Settings },
   ];

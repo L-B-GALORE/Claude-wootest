@@ -322,8 +322,34 @@ app.post('/:channelId', async (c) => {
             });
           }
 
-          // TODO: Broadcast SMS status update via WebSocket
-          // For now, this is less critical than call updates
+          // Broadcast message status update via WebSocket
+          try {
+            console.log('[Status] Broadcasting message status update via WebSocket');
+
+            const durableObjectId = c.env.COMPANY_ROOM.idFromName(channel.company.id);
+            const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+            await companyRoom.fetch('https://do.internal/broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                event: 'message_status_updated',
+                data: {
+                  messageId: smsMessage.messageId,
+                  conversationId: smsMessage.message.conversation.id,
+                  status: messageStatus,
+                  providerStatus: body.MessageStatus,
+                  messageSid: body.MessageSid,
+                  timestamp: new Date().toISOString(),
+                },
+              }),
+            });
+
+            console.log('[Status] ✅ Broadcasted message_status_updated event');
+          } catch (broadcastError) {
+            console.error('[Status] ⚠️ Failed to broadcast status via WebSocket:', broadcastError);
+            // Continue anyway
+          }
         } else {
           console.warn('[Status] ⚠️ SmsMessage not found for MessageSid:', body.MessageSid);
         }

@@ -51,12 +51,13 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
   }
 
   // Normalize phone numbers before processing
+  // If normalization fails, use the raw phone number as fallback
   const normalizedPhone = identifiers.phoneNumber
-    ? normalizePhoneNumber(identifiers.phoneNumber, defaultCountry)
+    ? (normalizePhoneNumber(identifiers.phoneNumber, defaultCountry) || identifiers.phoneNumber)
     : null;
 
   const normalizedWhatsApp = identifiers.whatsappId
-    ? normalizePhoneNumber(identifiers.whatsappId, defaultCountry)
+    ? (normalizePhoneNumber(identifiers.whatsappId, defaultCountry) || identifiers.whatsappId)
     : null;
 
   // Build search conditions (check all identifiers)
@@ -70,24 +71,14 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
     searchConditions.push({ email: identifiers.email.toLowerCase().trim() });
   }
 
-  if (normalizedWhatsApp) {
-    searchConditions.push({ whatsappId: normalizedWhatsApp });
-  }
-
-  if (identifiers.facebookId) {
-    searchConditions.push({ facebookId: identifiers.facebookId });
-  }
-
   // If no valid identifiers provided, throw error
   if (searchConditions.length === 0) {
-    throw new Error('At least one identifier (phone, email, WhatsApp, or Facebook ID) is required');
+    throw new Error('At least one identifier (phone or email) is required');
   }
 
   console.log('[Contact Service] Finding or creating contact for company:', companyId, {
     phoneNumber: normalizedPhone,
     email: identifiers.email,
-    whatsappId: normalizedWhatsApp,
-    facebookId: identifiers.facebookId,
   });
 
   try {
@@ -111,7 +102,6 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
     const name = identifiers.name ||
       normalizedPhone ||
       identifiers.email ||
-      normalizedWhatsApp ||
       'Unknown';
 
     contact = await prisma.contact.create({
@@ -119,8 +109,6 @@ export async function findOrCreateContact(companyId, identifiers, defaultCountry
         companyId,
         phoneNumber: normalizedPhone,
         email: identifiers.email ? identifiers.email.toLowerCase().trim() : null,
-        whatsappId: normalizedWhatsApp,
-        facebookId: identifiers.facebookId,
         name,
       },
     });

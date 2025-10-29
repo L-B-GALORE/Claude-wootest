@@ -66,6 +66,7 @@ app.get('/', async (c) => {
         _count: {
           select: {
             conversations: true,
+            voiceCalls: true,
           },
         },
         conversations: {
@@ -100,6 +101,7 @@ app.get('/', async (c) => {
           createdAt: contact.createdAt,
           updatedAt: contact.updatedAt,
           conversationCount: contact._count.conversations,
+          callCount: contact._count.voiceCalls,
           lastContactAt: contact.conversations[0]?.lastMessageAt || null,
         })),
         pagination: {
@@ -226,6 +228,7 @@ app.get('/:id', async (c) => {
         _count: {
           select: {
             conversations: true,
+            voiceCalls: true,
           },
         },
       },
@@ -250,6 +253,7 @@ app.get('/:id', async (c) => {
         contact: {
           ...contact,
           conversationCount: contact._count.conversations,
+          callCount: contact._count.voiceCalls,
           _count: undefined,
         },
       },

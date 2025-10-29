@@ -210,7 +210,9 @@ app.post('/:channelId', async (c) => {
     const isSMS = body.MessageSid ? true : false;
 
     // ========================================================================
-    // CALL/SMS LOGGING - Create Contact, Conversation, Message, VoiceCall/SmsMessage
+    // CALL/SMS LOGGING
+    // - Voice calls: Create VoiceCall record directly (no conversation/message)
+    // - SMS: Create Conversation → Message → SmsMessage (threaded)
     // ========================================================================
 
     let contact = null;
@@ -234,47 +236,46 @@ app.post('/:channelId', async (c) => {
 
       console.log('[Inbound] Contact:', contact.id, contact.name);
 
-      // 2. Create/find conversation based on type
-      const conversationType = isVoice ? 'TRANSACTIONAL' : 'LINEAR';
-      conversation = await findOrCreateConversation(
-        prisma,
-        channel.companyId,
-        contact.id,
-        channel.id,
-        conversationType
-      );
-
-      console.log('[Inbound] Conversation:', conversation.id, conversationType);
-
-      // 3. Create message record
-      const messageBody = isVoice
-        ? `Incoming call from ${body.From}`
-        : body.Body || '(No message body)';
-
-      message = await prisma.message.create({
-        data: {
-          conversationId: conversation.id,
-          direction: 'INBOUND',
-          senderType: 'CONTACT',
-          body: messageBody,
-          status: 'SENT',
-        },
-      });
-
-      console.log('[Inbound] Message created:', message.id);
-
-      // 4. Create type-specific record
+      // 2. Create type-specific record
       if (isVoice) {
+        // For VOICE: Create call record directly (no conversation needed)
         voiceCall = await prisma.voiceCall.create({
           data: {
-            messageId: message.id,
+            contactId: contact.id,
+            channelId: channel.id,
             providerCallId: body.CallSid,
+            direction: 'INBOUND',
             callStatus: 'RINGING',
           },
         });
 
         console.log('[Inbound] VoiceCall created:', voiceCall.id, 'CallSid:', body.CallSid);
       } else if (isSMS) {
+        // For SMS: Create conversation → message → sms_message (threaded)
+        conversation = await findOrCreateConversation(
+          prisma,
+          channel.companyId,
+          contact.id,
+          channel.id,
+          'LINEAR'
+        );
+
+        console.log('[Inbound] Conversation:', conversation.id, 'LINEAR');
+
+        const messageBody = body.Body || '(No message body)';
+
+        message = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: 'INBOUND',
+            senderType: 'CONTACT',
+            body: messageBody,
+            status: 'SENT',
+          },
+        });
+
+        console.log('[Inbound] Message created:', message.id);
+
         smsMessage = await prisma.smsMessage.create({
           data: {
             messageId: message.id,
@@ -285,6 +286,36 @@ app.post('/:channelId', async (c) => {
         });
 
         console.log('[Inbound] SmsMessage created:', smsMessage.id, 'MessageSid:', body.MessageSid);
+
+        // Broadcast new SMS message via WebSocket
+        try {
+          console.log('[Inbound] Broadcasting new SMS message via WebSocket to company:', channel.company.id);
+
+          const durableObjectId = c.env.COMPANY_ROOM.idFromName(channel.company.id);
+          const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+          await companyRoom.fetch('https://do.internal/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'new_message',
+              data: {
+                conversationId: conversation.id,
+                messageId: message.id,
+                contactId: contact.id,
+                channelId: channel.id,
+                direction: 'INBOUND',
+                body: messageBody,
+                timestamp: new Date().toISOString(),
+              },
+            }),
+          });
+
+          console.log('[Inbound] ✅ Broadcasted new_message event');
+        } catch (broadcastError) {
+          console.error('[Inbound] ⚠️ Failed to broadcast SMS via WebSocket:', broadcastError);
+          // Continue anyway
+        }
       }
 
       console.log('[Inbound] ✅ Successfully logged communication to database');
@@ -311,7 +342,7 @@ app.post('/:channelId', async (c) => {
         const inbox = await prisma.inbox.findUnique({
           where: { id: channel.routingTargetId },
           include: {
-            members: {
+            inboxMembers: {
               include: {
                 user: {
                   select: {
@@ -343,7 +374,7 @@ app.post('/:channelId', async (c) => {
 
         if (!strategy || strategy.strategyType === 'RING_ALL') {
           // RING_ALL strategy (default if no strategy set)
-          if (inbox.members.length === 0) {
+          if (inbox.inboxMembers.length === 0) {
             return c.text(
               `<?xml version="1.0" encoding="UTF-8"?><Response><Say>No agents are assigned to this inbox.</Say></Response>`,
               200,
@@ -352,7 +383,7 @@ app.post('/:channelId', async (c) => {
           }
 
           // Get all member user IDs (these are their Twilio client identities)
-          const memberIdentities = inbox.members.map((m) => m.userId);
+          const memberIdentities = inbox.inboxMembers.map((m) => m.userId);
 
           console.log('[Inbound] Ringing members:', memberIdentities);
 

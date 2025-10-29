@@ -44,8 +44,7 @@ import voiceRoutes from './api/voice/index.js';
 import companyRoutes from './api/company/index.js';
 import contactRoutes from './api/contacts/index.js';
 import callRoutes from './api/calls/index.js';
-// import conversationRoutes from './api/conversations';
-// import messageRoutes from './api/messages';
+import conversationRoutes from './api/conversations/index.js';
 
 // Import webhook routes (no auth required - called by external services)
 import webhookRoutes from './webhooks/index.js';
@@ -144,6 +143,9 @@ api.route('/contacts', contactRoutes);
 
 api.use('/calls/*', authMiddleware);
 api.route('/calls', callRoutes);
+
+api.use('/conversations/*', authMiddleware);
+api.route('/conversations', conversationRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

@@ -6,6 +6,7 @@
 #
 # Documentation: https://developers.cloudflare.com/workers/wrangler/configuration/
 
+# Base configuration (shared across all environments)
 name = "claude-wootestnew-api"
 main = "src/index.js"
 compatibility_date = "2024-10-01"
@@ -13,21 +14,7 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "f09bbb81e8be554d6e67b5de063d8925"
 
 # Worker configuration
-workers_dev = true
-
-# KV Namespaces (for caching, presence, sessions)
-[[kv_namespaces]]
-binding = "PRESENCE_KV"
-id = "c0d205f35d3745b68b452282773ef17e"
-
-[[kv_namespaces]]
-binding = "CACHE_KV"
-id = "1f5c5cc1d566466f8a9cabacdfd08f58"
-
-# R2 Buckets (for call recordings, attachments, media)
-[[r2_buckets]]
-binding = "MEDIA_STORAGE"
-bucket_name = "customer-service-media"
+workers_dev = false
 
 # Durable Objects (for WebSocket connections per company)
 [[durable_objects.bindings]]
@@ -39,13 +26,71 @@ script_name = "claude-wootestnew-api"
 tag = "v1"
 new_sqlite_classes = ["CompanyRoom"]
 
-# Environment variables (non-sensitive, for development)
-[vars]
-ENVIRONMENT = "development"
+# ============================================================================
+# STAGING ENVIRONMENT
+# ============================================================================
+[env.staging]
+name = "claude-wootestnew-api-staging"
+workers_dev = true
 
-# Secrets (sensitive data, set via: wrangler secret put SECRET_NAME)
+# KV Namespaces (staging)
+[[env.staging.kv_namespaces]]
+binding = "PRESENCE_KV"
+id = "9227dd80d6104081855d9dc72f30c357"
+
+[[env.staging.kv_namespaces]]
+binding = "CACHE_KV"
+id = "7800e46f36b54a7c9cea6a73dbf611a3"
+
+# R2 Buckets (staging)
+[[env.staging.r2_buckets]]
+binding = "MEDIA_STORAGE"
+bucket_name = "claude-wootest-staging"
+
+# Environment variables (staging)
+[env.staging.vars]
+ENVIRONMENT = "staging"
+
+# Durable Objects (staging)
+[[env.staging.durable_objects.bindings]]
+name = "COMPANY_ROOM"
+class_name = "CompanyRoom"
+script_name = "claude-wootestnew-api-staging"
+
+# ============================================================================
+# PRODUCTION ENVIRONMENT
+# ============================================================================
+[env.production]
+name = "claude-wootestnew-api"
+workers_dev = false
+
+# KV Namespaces (production)
+[[env.production.kv_namespaces]]
+binding = "PRESENCE_KV"
+id = "c0d205f35d3745b68b452282773ef17e"
+
+[[env.production.kv_namespaces]]
+binding = "CACHE_KV"
+id = "1f5c5cc1d566466f8a9cabacdfd08f58"
+
+# R2 Buckets (production)
+[[env.production.r2_buckets]]
+binding = "MEDIA_STORAGE"
+bucket_name = "customer-service-media"
+
+# Environment variables (production)
+[env.production.vars]
+ENVIRONMENT = "production"
+
+# Durable Objects (production)
+[[env.production.durable_objects.bindings]]
+name = "COMPANY_ROOM"
+class_name = "CompanyRoom"
+script_name = "claude-wootestnew-api"
+
+# ============================================================================
+# SECRETS (Set via GitHub Actions or wrangler secret put)
+# ============================================================================
 # - DATABASE_URL (Neon Postgres connection string)
 # - JWT_SECRET (for signing JWT tokens)
 # - ENCRYPTION_KEY (for encrypting provider credentials)
-# - TWILIO_ACCOUNT_SID (optional, for demo/testing)
-# - TWILIO_AUTH_TOKEN (optional, for demo/testing)

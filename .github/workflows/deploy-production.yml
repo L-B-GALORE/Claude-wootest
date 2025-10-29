@@ -98,7 +98,7 @@ jobs:
     name: Deploy Frontend to Production
     environment:
       name: production
-      url: https://claude-wootest.pages.dev
+      url: https://claude-wootestnew.pages.dev
     needs: deploy-backend-production # Wait for backend to deploy first
 
     steps:
@@ -128,14 +128,14 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: frontend
-          command: pages deploy dist --project-name=claude-wootest --branch=main
+          command: pages deploy dist --project-name=claude-wootestnew --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Frontend Production Deployment Summary
         run: |
           echo "✅ Frontend deployed to production!"
-          echo "🌐 Production App: https://claude-wootest.pages.dev"
+          echo "🌐 Production App: https://claude-wootestnew.pages.dev"
 
   create-release-tag:
     runs-on: ubuntu-latest
@@ -164,6 +164,6 @@ jobs:
           echo ""
           echo "🌐 Production URLs:"
           echo "   - API: https://claude-wootestnew-api.lilboo.workers.dev"
-          echo "   - App: https://claude-wootest.pages.dev"
+          echo "   - App: https://claude-wootestnew.pages.dev"
           echo ""
           echo "📦 Release tag created for rollback capability"

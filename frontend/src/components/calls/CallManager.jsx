@@ -115,6 +115,15 @@ function CallManager() {
       twilioDevice.on('error', handleError);
     } catch (err) {
       console.error('Failed to initialize Twilio Device:', err);
+
+      // If no provider is configured, don't show an error - just silently disable calling
+      if (err.code === 'NO_PROVIDER_CONFIGURED') {
+        console.log('[CallManager] Calling features disabled - no Twilio provider configured');
+        setDeviceReady(false);
+        return;
+      }
+
+      // For other errors, show the error message
       setError('Failed to initialize calling. Please refresh the page.');
     }
   };

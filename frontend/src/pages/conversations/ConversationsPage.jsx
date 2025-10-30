@@ -19,8 +19,14 @@ import { useAuth } from '../../context/AuthContext';
 
 function ConversationsPage() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
+  const selectedConversationIdRef = useRef(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
 
   // Fetch conversations list
   const { data: conversationsData, isLoading: loadingConversations } = useQuery({
@@ -58,8 +64,9 @@ function ConversationsPage() {
       queryClient.invalidateQueries(['conversations']);
 
       // If viewing this conversation, refresh it
-      if (data.conversationId === selectedConversationId) {
-        queryClient.invalidateQueries(['conversation', selectedConversationId]);
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        queryClient.invalidateQueries(['conversation', currentConversationId]);
       }
     };
 
@@ -71,8 +78,9 @@ function ConversationsPage() {
       queryClient.invalidateQueries(['conversations']);
 
       // If viewing this conversation, refresh it
-      if (data.conversationId === selectedConversationId) {
-        queryClient.invalidateQueries(['conversation', selectedConversationId]);
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        queryClient.invalidateQueries(['conversation', currentConversationId]);
       }
     };
 
@@ -81,8 +89,9 @@ function ConversationsPage() {
       console.log('[ConversationsPage] Received message_status_updated event:', data);
 
       // If viewing this conversation, refresh it to show updated status
-      if (data.conversationId === selectedConversationId) {
-        queryClient.invalidateQueries(['conversation', selectedConversationId]);
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        queryClient.invalidateQueries(['conversation', currentConversationId]);
       }
     };
 
@@ -98,7 +107,7 @@ function ConversationsPage() {
       socketManager.off('message_sent', handleMessageSent);
       socketManager.off('message_status_updated', handleStatusUpdate);
     };
-  }, [user, selectedConversationId, queryClient]);
+  }, [user]); // queryClient is stable, selectedConversationId tracked via ref
 
   return (
     <div className="h-full flex bg-gray-100 dark:bg-gray-900">

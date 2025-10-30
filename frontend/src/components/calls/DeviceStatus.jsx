@@ -42,14 +42,22 @@ function DeviceStatus() {
       setShowIndicator(true);
     };
 
+    // Listen for no provider configured
+    const handleNoProvider = () => {
+      console.log('[DeviceStatus] No provider configured - hiding indicator');
+      setShowIndicator(false);
+    };
+
     twilioDevice.on('registered', handleRegistered);
     twilioDevice.on('error', handleError);
     twilioDevice.on('unregistered', handleUnregistered);
+    twilioDevice.on('no_provider', handleNoProvider);
 
     return () => {
       twilioDevice.off('registered', handleRegistered);
       twilioDevice.off('error', handleError);
       twilioDevice.off('unregistered', handleUnregistered);
+      twilioDevice.off('no_provider', handleNoProvider);
     };
   }, []);
 

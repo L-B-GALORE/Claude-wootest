@@ -77,10 +77,13 @@ function ConversationsPage() {
       // Refresh conversation list
       queryClient.invalidateQueries(['conversations']);
 
-      // If viewing this conversation, refresh it
+      // If viewing this conversation, refresh it immediately
       const currentConversationId = selectedConversationIdRef.current;
+      console.log('[ConversationsPage] Message sent - Current conversation:', currentConversationId, 'Event conversation:', data.conversationId);
+
       if (data.conversationId === currentConversationId) {
-        queryClient.invalidateQueries(['conversation', currentConversationId]);
+        console.log('[ConversationsPage] Refetching conversation after message sent');
+        queryClient.refetchQueries(['conversation', currentConversationId]);
       }
     };
 
@@ -90,8 +93,11 @@ function ConversationsPage() {
 
       // If viewing this conversation, refresh it to show updated status
       const currentConversationId = selectedConversationIdRef.current;
+      console.log('[ConversationsPage] Current conversation:', currentConversationId, 'Event conversation:', data.conversationId);
+
       if (data.conversationId === currentConversationId) {
-        queryClient.invalidateQueries(['conversation', currentConversationId]);
+        console.log('[ConversationsPage] Refetching conversation data immediately');
+        queryClient.refetchQueries(['conversation', currentConversationId]);
       }
     };
 
@@ -251,6 +257,8 @@ function MessageThread({ conversationId }) {
     },
     enabled: !!conversationId,
     refetchInterval: 60000, // Fallback polling every 60 seconds (WebSocket is primary)
+    refetchOnMount: 'always', // Always refetch when component mounts
+    staleTime: 0, // Consider data stale immediately
   });
 
   // Send message mutation

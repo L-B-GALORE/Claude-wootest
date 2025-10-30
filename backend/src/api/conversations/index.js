@@ -22,8 +22,8 @@ const app = new Hono();
  * List all LINEAR conversations for the company
  *
  * Query params:
- * - status: Filter by status (OPEN, CLOSED, ARCHIVED)
- * - limit: Number of results (default: 50)
+ * - status: Filter by status (OPEN, CLOSED, ARCHIVED, BOTH)
+ * - limit: Number of results (default: 20)
  * - offset: Pagination offset (default: 0)
  */
 app.get('/', async (c) => {
@@ -31,8 +31,8 @@ app.get('/', async (c) => {
     const companyId = c.get('companyId');
     const prisma = getPrisma(c.env.DATABASE_URL);
 
-    const status = c.req.query('status') || 'OPEN';
-    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100);
+    const statusParam = c.req.query('status') || 'OPEN';
+    const limit = Math.min(parseInt(c.req.query('limit') || '20', 10), 100);
     const offset = parseInt(c.req.query('offset') || '0', 10);
 
     // Build where clause - only LINEAR conversations (SMS)
@@ -41,8 +41,11 @@ app.get('/', async (c) => {
       type: 'LINEAR', // Exclude TRANSACTIONAL (voice calls)
     };
 
-    if (status) {
-      where.status = status;
+    // Handle "BOTH" filter (show OPEN and CLOSED, exclude ARCHIVED)
+    if (statusParam && statusParam !== 'BOTH') {
+      where.status = statusParam;
+    } else if (statusParam === 'BOTH') {
+      where.status = { in: ['OPEN', 'CLOSED'] };
     }
 
     // Get conversations with latest message and contact info
@@ -392,6 +395,119 @@ app.post('/:id/messages', async (c) => {
         error: {
           code: 'MESSAGE_SEND_FAILED',
           message: 'Failed to send message',
+        },
+      },
+      500
+    );
+  }
+});
+
+/**
+ * PATCH /conversations/:id/status
+ * Update conversation status (OPEN, CLOSED, ARCHIVED)
+ *
+ * Body: { status: 'OPEN' | 'CLOSED' | 'ARCHIVED' }
+ */
+app.patch('/:id/status', async (c) => {
+  try {
+    const { id } = c.req.param();
+    const companyId = c.get('companyId');
+    const userId = c.get('userId');
+    const prisma = getPrisma(c.env.DATABASE_URL);
+
+    const body = await c.req.json();
+    const { status } = body;
+
+    // Validate status
+    if (!['OPEN', 'CLOSED', 'ARCHIVED'].includes(status)) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid status. Must be OPEN, CLOSED, or ARCHIVED',
+          },
+        },
+        400
+      );
+    }
+
+    // Get conversation
+    const conversation = await prisma.conversation.findFirst({
+      where: {
+        id,
+        companyId,
+      },
+      include: {
+        contact: true,
+      },
+    });
+
+    if (!conversation) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'CONVERSATION_NOT_FOUND',
+            message: 'Conversation not found',
+          },
+        },
+        404
+      );
+    }
+
+    // Update status
+    const updatedConversation = await prisma.conversation.update({
+      where: { id },
+      data: { status },
+      include: {
+        contact: true,
+        channel: true,
+      },
+    });
+
+    console.log(`[Conversations API] Updated conversation ${id} status to ${status}`);
+
+    // Broadcast status change via WebSocket
+    try {
+      console.log('[Conversations API] Broadcasting conversation status change via WebSocket');
+
+      const durableObjectId = c.env.COMPANY_ROOM.idFromName(companyId);
+      const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+      await companyRoom.fetch('https://do.internal/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'conversation_status_updated',
+          data: {
+            conversationId: id,
+            contactId: conversation.contact.id,
+            status,
+            userId,
+            timestamp: new Date().toISOString(),
+          },
+        }),
+      });
+
+      console.log('[Conversations API] ✅ Broadcasted conversation_status_updated event');
+    } catch (broadcastError) {
+      console.error('[Conversations API] ⚠️ Failed to broadcast via WebSocket:', broadcastError);
+      // Continue anyway
+    }
+
+    return c.json({
+      success: true,
+      data: { conversation: updatedConversation },
+    });
+  } catch (error) {
+    console.error('[Conversations API] Error updating conversation status:', error);
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'STATUS_UPDATE_FAILED',
+          message: 'Failed to update conversation status',
         },
       },
       500

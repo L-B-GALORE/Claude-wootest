@@ -11,14 +11,15 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle } from 'lucide-react';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2 } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
 
 function ConversationsPage() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('OPEN'); // OPEN, CLOSED, BOTH
   const selectedConversationIdRef = useRef(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -28,17 +29,28 @@ function ConversationsPage() {
     selectedConversationIdRef.current = selectedConversationId;
   }, [selectedConversationId]);
 
-  // Fetch conversations list
-  const { data: conversationsData, isLoading: loadingConversations } = useQuery({
-    queryKey: ['conversations'],
-    queryFn: async () => {
-      const response = await api.get('/api/v1/conversations?status=OPEN');
+  // Fetch conversations list with pagination
+  const {
+    data: conversationsData,
+    isLoading: loadingConversations,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['conversations', statusFilter],
+    queryFn: async ({ pageParam = 0 }) => {
+      const response = await api.get(`/api/v1/conversations?status=${statusFilter}&limit=20&offset=${pageParam}`);
       return response.data.data;
     },
-    refetchInterval: 60000, // Fallback polling every 60 seconds (WebSocket is primary)
+    getNextPageParam: (lastPage, pages) => {
+      const totalFetched = pages.reduce((sum, page) => sum + page.conversations.length, 0);
+      return totalFetched < lastPage.total ? totalFetched : undefined;
+    },
+    refetchInterval: 60000,
   });
 
-  const conversations = conversationsData?.conversations || [];
+  // Flatten paginated conversations
+  const conversations = conversationsData?.pages.flatMap((page) => page.conversations) || [];
 
   // Auto-select first conversation if none selected
   useEffect(() => {
@@ -101,10 +113,25 @@ function ConversationsPage() {
       }
     };
 
+    // Handle conversation status updates (OPEN/CLOSED)
+    const handleConversationStatusUpdate = (data) => {
+      console.log('[ConversationsPage] Received conversation_status_updated event:', data);
+
+      // Refetch all conversation lists (could be moving between filters)
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+
+      // If viewing this conversation, refresh it
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        queryClient.refetchQueries(['conversation', currentConversationId]);
+      }
+    };
+
     // Subscribe to events
     socketManager.on('new_message', handleNewMessage);
     socketManager.on('message_sent', handleMessageSent);
     socketManager.on('message_status_updated', handleStatusUpdate);
+    socketManager.on('conversation_status_updated', handleConversationStatusUpdate);
 
     // Cleanup on unmount
     return () => {
@@ -112,8 +139,9 @@ function ConversationsPage() {
       socketManager.off('new_message', handleNewMessage);
       socketManager.off('message_sent', handleMessageSent);
       socketManager.off('message_status_updated', handleStatusUpdate);
+      socketManager.off('conversation_status_updated', handleConversationStatusUpdate);
     };
-  }, [user]); // queryClient is stable, selectedConversationId tracked via ref
+  }, [user, queryClient]); // queryClient is stable, selectedConversationId tracked via ref
 
   return (
     <div className="h-full flex bg-gray-100 dark:bg-gray-900">
@@ -124,6 +152,40 @@ function ConversationsPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
           </p>
+
+          {/* Status Filter Buttons */}
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => setStatusFilter('OPEN')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                statusFilter === 'OPEN'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Open
+            </button>
+            <button
+              onClick={() => setStatusFilter('CLOSED')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                statusFilter === 'CLOSED'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Closed
+            </button>
+            <button
+              onClick={() => setStatusFilter('BOTH')}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                statusFilter === 'BOTH'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              Both
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -139,14 +201,36 @@ function ConversationsPage() {
               </p>
             </div>
           ) : (
-            conversations.map((conv) => (
-              <ConversationListItem
-                key={conv.id}
-                conversation={conv}
-                isSelected={selectedConversationId === conv.id}
-                onClick={() => setSelectedConversationId(conv.id)}
-              />
-            ))
+            <>
+              {conversations.map((conv) => (
+                <ConversationListItem
+                  key={conv.id}
+                  conversation={conv}
+                  isSelected={selectedConversationId === conv.id}
+                  onClick={() => setSelectedConversationId(conv.id)}
+                />
+              ))}
+
+              {/* Load More Button */}
+              {hasNextPage && (
+                <div className="p-4">
+                  <button
+                    onClick={() => fetchNextPage()}
+                    disabled={isFetchingNextPage}
+                    className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isFetchingNextPage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      'Load More'
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -172,7 +256,7 @@ function ConversationsPage() {
 
 // Conversation List Item Component
 function ConversationListItem({ conversation, isSelected, onClick }) {
-  const { contact, lastMessage, lastMessageAt, messageCount } = conversation;
+  const { contact, lastMessage, lastMessageAt, messageCount, status } = conversation;
 
   const formatTimestamp = (date) => {
     if (!date) return '';
@@ -209,9 +293,18 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-              {contact.name || contact.phoneNumber}
-            </h3>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {/* Status Indicator Dot */}
+              {status === 'OPEN' ? (
+                <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="Open" />
+              ) : status === 'CLOSED' ? (
+                <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title="Closed" />
+              ) : null}
+
+              <h3 className="font-semibold text-gray-900 dark:text-white truncate">
+                {contact.name || contact.phoneNumber}
+              </h3>
+            </div>
             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 flex-shrink-0">
               {formatTimestamp(lastMessageAt)}
             </span>
@@ -289,6 +382,18 @@ function MessageThread({ conversationId }) {
     },
   });
 
+  // Change conversation status mutation
+  const changeStatusMutation = useMutation({
+    mutationFn: async (newStatus) => {
+      await api.patch(`/api/v1/conversations/${conversationId}/status`, { status: newStatus });
+    },
+    onSuccess: () => {
+      console.log('[MessageThread] Conversation status updated');
+      queryClient.invalidateQueries(['conversation', conversationId]);
+      queryClient.invalidateQueries(['conversations']);
+    },
+  });
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -315,26 +420,56 @@ function MessageThread({ conversationId }) {
     return null;
   }
 
-  const { contact, channel, messages } = conversationData;
+  const { contact, channel, messages, status } = conversationData;
 
   return (
     <div className="flex-1 flex flex-col">
       {/* Thread Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-            <User className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {contact.name || contact.phoneNumber}
-            </h2>
-            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-              <Phone className="w-4 h-4" />
-              <span>{contact.phoneNumber}</span>
-              <span>•</span>
-              <span>Channel: {channel.identifier}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+              <User className="w-5 h-5 text-primary-600 dark:text-primary-400" />
             </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {contact.name || contact.phoneNumber}
+              </h2>
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Phone className="w-4 h-4" />
+                <span>{contact.phoneNumber}</span>
+                <span>•</span>
+                <span>Channel: {channel.identifier}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Status Change Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => changeStatusMutation.mutate('OPEN')}
+              disabled={status === 'OPEN' || changeStatusMutation.isPending}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                status === 'OPEN'
+                  ? 'bg-green-500 text-white cursor-default'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-700 dark:hover:text-green-300'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {status === 'OPEN' ? 'Open' : 'Mark Open'}
+            </button>
+            <button
+              onClick={() => changeStatusMutation.mutate('CLOSED')}
+              disabled={status === 'CLOSED' || changeStatusMutation.isPending}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                status === 'CLOSED'
+                  ? 'bg-red-500 text-white cursor-default'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-red-100 dark:hover:bg-red-900 hover:text-red-700 dark:hover:text-red-300'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <XOctagon className="w-4 h-4" />
+              {status === 'CLOSED' ? 'Closed' : 'Mark Closed'}
+            </button>
           </div>
         </div>
       </div>

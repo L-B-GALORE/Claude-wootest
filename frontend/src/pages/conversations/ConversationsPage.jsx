@@ -245,10 +245,12 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
 // Message Thread Component
 function MessageThread({ conversationId }) {
   const [messageText, setMessageText] = useState('');
+  const [recentlySentMessage, setRecentlySentMessage] = useState(false);
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
 
   // Fetch conversation with messages
+  // Use aggressive polling when we recently sent a message (fallback for WebSocket timing)
   const { data: conversationData, isLoading } = useQuery({
     queryKey: ['conversation', conversationId],
     queryFn: async () => {
@@ -256,10 +258,22 @@ function MessageThread({ conversationId }) {
       return response.data.data.conversation;
     },
     enabled: !!conversationId,
-    refetchInterval: 60000, // Fallback polling every 60 seconds (WebSocket is primary)
-    refetchOnMount: 'always', // Always refetch when component mounts
-    staleTime: 0, // Consider data stale immediately
+    refetchInterval: recentlySentMessage ? 2000 : 60000, // Poll every 2s after send, then 60s
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
+
+  // Stop aggressive polling after 30 seconds
+  useEffect(() => {
+    if (recentlySentMessage) {
+      console.log('[MessageThread] Starting aggressive polling after message send');
+      const timer = setTimeout(() => {
+        console.log('[MessageThread] Stopping aggressive polling');
+        setRecentlySentMessage(false);
+      }, 30000); // Stop after 30 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [recentlySentMessage]);
 
   // Send message mutation
   const sendMessageMutation = useMutation({
@@ -267,6 +281,8 @@ function MessageThread({ conversationId }) {
       await api.post(`/api/v1/conversations/${conversationId}/messages`, { body });
     },
     onSuccess: () => {
+      console.log('[MessageThread] Message sent, enabling aggressive polling for status updates');
+      setRecentlySentMessage(true); // Start aggressive polling
       queryClient.invalidateQueries(['conversation', conversationId]);
       queryClient.invalidateQueries(['conversations']);
       setMessageText('');

@@ -52,13 +52,6 @@ function ConversationsPage() {
   // Flatten paginated conversations
   const conversations = conversationsData?.pages.flatMap((page) => page.conversations) || [];
 
-  // Auto-select first conversation if none selected
-  useEffect(() => {
-    if (conversations.length > 0 && !selectedConversationId) {
-      setSelectedConversationId(conversations[0].id);
-    }
-  }, [conversations, selectedConversationId]);
-
   // WebSocket connection and event listeners
   useEffect(() => {
     if (!user?.id || !user?.companyId) return;
@@ -238,7 +231,11 @@ function ConversationsPage() {
       {/* Right Panel - Message Thread */}
       <div className="flex-1 flex flex-col">
         {selectedConversationId ? (
-          <MessageThread conversationId={selectedConversationId} />
+          <MessageThread
+            conversationId={selectedConversationId}
+            statusFilter={statusFilter}
+            onClearConversation={() => setSelectedConversationId(null)}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
@@ -336,7 +333,7 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
 }
 
 // Message Thread Component
-function MessageThread({ conversationId }) {
+function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   const [messageText, setMessageText] = useState('');
   const [recentlySentMessage, setRecentlySentMessage] = useState(false);
   const messagesEndRef = useRef(null);
@@ -386,11 +383,25 @@ function MessageThread({ conversationId }) {
   const changeStatusMutation = useMutation({
     mutationFn: async (newStatus) => {
       await api.patch(`/api/v1/conversations/${conversationId}/status`, { status: newStatus });
+      return newStatus;
     },
-    onSuccess: () => {
-      console.log('[MessageThread] Conversation status updated');
+    onSuccess: (newStatus) => {
+      console.log('[MessageThread] Conversation status updated to:', newStatus);
       queryClient.invalidateQueries(['conversation', conversationId]);
       queryClient.invalidateQueries(['conversations']);
+
+      // Clear conversation if:
+      // 1. Marked as CLOSED (always close the conversation UI)
+      // 2. OR the new status doesn't match the current filter
+      const shouldClear =
+        newStatus === 'CLOSED' ||
+        (statusFilter === 'OPEN' && newStatus !== 'OPEN') ||
+        (statusFilter === 'CLOSED' && newStatus !== 'CLOSED');
+
+      if (shouldClear) {
+        console.log('[MessageThread] Clearing conversation from view');
+        onClearConversation();
+      }
     },
   });
 

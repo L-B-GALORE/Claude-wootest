@@ -63,6 +63,9 @@ model User {
   role         UserRole  @default(AGENT)
   cellPhone    String?   @map("cell_phone")
   avatarUrl    String?   @map("avatar_url")
+  emailVerified Boolean  @default(false) @map("email_verified")
+  verificationToken String? @map("verification_token")
+  verificationTokenExpiry DateTime? @map("verification_token_expiry")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   lastActiveAt DateTime? @map("last_active_at")
@@ -80,6 +83,7 @@ model User {
   @@unique([companyId, email])
   @@index([companyId])
   @@index([email])
+  @@index([verificationToken])
   @@map("users")
 }
 

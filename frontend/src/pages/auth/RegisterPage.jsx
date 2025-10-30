@@ -30,6 +30,8 @@ function RegisterPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -42,6 +44,7 @@ function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess(false);
 
     // Basic validation
     if (formData.password.length < 8) {
@@ -56,7 +59,9 @@ function RegisterPage() {
     setLoading(false);
 
     if (result.success) {
-      navigate('/dashboard');
+      // Show success message - user needs to verify email
+      setSuccess(true);
+      setSuccessMessage(result.message || 'Account created! Check your email to verify and login.');
     } else {
       setError(result.error);
     }
@@ -65,20 +70,54 @@ function RegisterPage() {
   return (
     <div className="w-full max-w-md">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Create your account
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Start your customer service platform
-          </p>
-        </div>
+        {success ? (
+          // Success state - email verification required
+          <div className="text-center">
+            <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mb-6">
+              <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" />
+              </svg>
+            </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              Check your email!
+            </h1>
+
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              {successMessage}
+            </p>
+
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+              <p className="text-sm text-blue-800 dark:text-blue-300">
+                We sent a verification link to <strong>{formData.email}</strong>
+              </p>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-2">
+                Click the link in the email to verify your account and login automatically.
+              </p>
+            </div>
+
+            <div className="text-sm text-gray-500 dark:text-gray-400 space-y-2">
+              <p>Didn't receive the email?</p>
+              <p>Check your spam folder or <Link to="/resend-verification" className="text-primary-600 dark:text-primary-400 hover:underline font-medium">request a new one</Link></p>
+            </div>
           </div>
-        )}
+        ) : (
+          // Registration form
+          <>
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Create your account
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-2">
+                Start your customer service platform
+              </p>
+            </div>
+
+            {error && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              </div>
+            )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -170,17 +209,19 @@ function RegisterPage() {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Already have an account?{' '}
-            <Link
-              to="/login"
-              className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
-            >
-              Sign in
-            </Link>
-          </p>
-        </div>
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Already have an account?{' '}
+                <Link
+                  to="/login"
+                  className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                >
+                  Sign in
+                </Link>
+              </p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

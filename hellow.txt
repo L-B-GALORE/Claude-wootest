@@ -1,0 +1,141 @@
+Session Transcript - Deployment Workflow Improvement
+Date: 2025-10-30
+================================================================================
+
+INITIAL REQUEST
+---------------
+User reconnected to terminal and wanted to change the deployment workflow.
+Previous behavior was pushing to both staging and production GitHub branches.
+Goal: Work carefully in staging only until explicitly told to push to production.
+
+USER REQUIREMENTS
+-----------------
+1. Default behavior: Always work on staging, push to staging, affect staging only
+2. Production deployment: Only when explicitly requested with clear language
+3. Want to work carefully in staging until perfection is confirmed
+4. Uncertainty about branch structure (staging vs main)
+
+RESEARCH PHASE
+--------------
+Investigated current setup:
+- Git branches: main (production) and staging exist
+- Cloudflare Workers deployment with wrangler.toml
+- GitHub Actions workflows for auto-deployment
+- Staging branch → staging environment (auto-deploy)
+- Main branch → production environment (auto-deploy with approval gate)
+
+CLARIFYING QUESTIONS
+--------------------
+Asked user about preferred workflow:
+Q1: Where should code go by default?
+A1: Always staging branch (safe default)
+
+Q2: How should production deployments work?
+A2: User explicitly says "push to production"
+
+Q3: What happens with implicit "commit this" or "push this"?
+A3: Always assume staging
+
+IMPLEMENTATION
+--------------
+Created three key files in .claude/ directory:
+
+1. commands/push-to-production.md
+   - Special command for explicit production deployments
+   - Creates PR from staging → main
+   - Includes pre-deployment checklist and safety warnings
+   - Provides rollback instructions
+
+2. DEPLOYMENT.md
+   - Comprehensive deployment workflow documentation
+   - Explains staging vs production environments
+   - Details the branch structure and flow
+   - Includes rollback procedures, troubleshooting
+   - Documents database migration handling
+   - Environment variables and GitHub Actions info
+
+3. README.md
+   - Quick reference for Claude Code behavior
+   - Critical deployment safety rules
+   - Lists "magic words" that trigger production
+   - Pre-push checklist
+   - Branch strategy diagram
+
+WORKFLOW ESTABLISHED
+--------------------
+Default Behavior (Staging):
+- Work on staging branch
+- Commit to staging
+- Push to staging
+- Deploy to staging environment only
+
+Production Deployment (Explicit):
+- User says: "push to production" (or similar explicit phrase)
+- Claude creates PR: staging → main
+- User reviews and approves PR in GitHub
+- User merges PR
+- GitHub Actions deploys to production (with approval gate)
+
+ACTIONS TAKEN
+-------------
+1. Switched to staging branch (was on main)
+2. Created .claude/commands/ directory
+3. Created push-to-production.md command file
+4. Created DEPLOYMENT.md documentation
+5. Created README.md with instructions
+6. Staged changes with: git add .claude/
+7. Committed to staging branch with descriptive message
+8. Pushed to staging: git push origin staging
+9. Staging deployment triggered via GitHub Actions
+
+ENVIRONMENTS
+------------
+Staging:
+- Branch: staging
+- Frontend: https://staging.claude-wootestnew.pages.dev
+- Backend: https://claude-wootestnew-api-staging.lilboo.workers.dev
+- Database: Staging database (separate)
+- Auto-deploy: Yes, on push to staging
+
+Production:
+- Branch: main
+- Frontend: https://claude-wootestnew.pages.dev
+- Backend: https://claude-wootestnew-api.lilboo.workers.dev
+- Database: Production database (live data)
+- Auto-deploy: Yes, on merge to main (requires approval)
+
+KEY SAFETY FEATURES
+-------------------
+1. Default = staging (safe by default)
+2. Production requires explicit permission
+3. PR review required for production
+4. GitHub Actions approval gate for production
+5. Automatic release tagging for rollback capability
+6. Documentation prevents accidental production pushes
+
+CURRENT STATE
+-------------
+- Currently on: staging branch
+- Git status: Clean (all changes committed and pushed)
+- Last commit: "Add safe deployment workflow documentation and commands"
+- Pushed to: origin/staging
+- Deployment: Staging environment should be deploying changes
+
+RESULTS
+-------
+✅ Staging-first workflow established
+✅ Production requires explicit "push to production" command
+✅ Comprehensive documentation created
+✅ Safety measures in place
+✅ Changes committed and pushed to staging
+✅ Workflow ready for immediate use
+
+NEXT STEPS
+----------
+- User can make any changes - they'll go to staging by default
+- Test in staging environment
+- When ready: say "push to production" to deploy to main
+- Continue working safely in staging until perfection confirmed
+
+================================================================================
+End of Session Transcript

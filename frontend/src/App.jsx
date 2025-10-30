@@ -6,6 +6,8 @@
  * Routes:
  * - /login - Public login page
  * - /register - Public registration page
+ * - /verify-email - Public email verification page (magic link)
+ * - /resend-verification - Public resend verification email page
  * - /dashboard - Protected dashboard (requires auth)
  * - /conversations - Protected conversations page
  * - /settings - Protected settings (includes Inboxes tab)
@@ -26,6 +28,8 @@ import DashboardLayout from './layouts/DashboardLayout';
 // Pages
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import VerifyEmailPage from './pages/auth/VerifyEmailPage';
+import ResendVerificationPage from './pages/auth/ResendVerificationPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import ConversationsPage from './pages/conversations/ConversationsPage';
 import ContactsPage from './pages/contacts/ContactsPage';
@@ -65,6 +69,8 @@ function App() {
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/resend-verification" element={<ResendVerificationPage />} />
       </Route>
 
       {/* Protected routes - Dashboard */}

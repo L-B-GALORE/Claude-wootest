@@ -99,20 +99,20 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/v1/auth/register', data);
 
-      const { user: userData, company: companyData, tokens } = response.data.data;
+      // New flow: Registration returns user data but NO tokens
+      // User must verify email first before they can login
+      const { user: userData, company: companyData, emailSent } = response.data.data;
+      const message = response.data.message;
 
-      // Store tokens
-      localStorage.setItem('accessToken', tokens.accessToken);
-      localStorage.setItem('refreshToken', tokens.refreshToken);
-
-      // Store user and company data
-      localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('company', JSON.stringify(companyData));
-
-      setUser(userData);
-      setCompany(companyData);
-
-      return { success: true };
+      return {
+        success: true,
+        data: {
+          user: userData,
+          company: companyData,
+          emailSent,
+        },
+        message,
+      };
     } catch (error) {
       console.error('Registration error:', error);
 

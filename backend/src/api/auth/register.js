@@ -9,10 +9,11 @@
  * 1. Validate request body (company name, user email, password)
  * 2. Check if email already exists
  * 3. Hash password
- * 4. Create company record
- * 5. Create owner user record
- * 6. Generate JWT tokens (access + refresh)
- * 7. Return user data + tokens
+ * 4. Generate verification token (single-use, 24-hour expiry)
+ * 5. Create company record
+ * 6. Create owner user record (emailVerified=false)
+ * 7. Send verification email with magic link
+ * 8. Return success (NO tokens - user must verify email first)
  *
  * Request Body:
  * {
@@ -25,20 +26,19 @@
  * Response (201 Created):
  * {
  *   success: true,
+ *   message: "Account created! Check your email to verify and login.",
  *   data: {
- *     user: { id, email, name, role, companyId },
+ *     user: { id, email, name },
  *     company: { id, name },
- *     tokens: {
- *       accessToken: string,
- *       refreshToken: string
- *     }
+ *     emailSent: boolean
  *   }
  * }
  *
- * BEFORE MODIFYING:
- * - Will this change break existing registration flow?
- * - Do we need email verification? (not yet, but plan for it)
- * - Should we send welcome email? (future)
+ * Email Verification:
+ * - Sends email with one-click verification link
+ * - Link format: {FRONTEND_URL}/verify-email?token={verificationToken}
+ * - Clicking link verifies email AND logs user in automatically
+ * - Token is single-use and expires in 24 hours
  *
  * Used by:
  * - Frontend registration page
@@ -47,9 +47,9 @@
 import { Hono } from 'hono';
 import { getPrisma } from '../../lib/prisma.js';
 import { hashPassword, validatePasswordStrength } from '../../utils/password.js';
-import { generateAccessToken, generateRefreshToken } from '../../utils/jwt.js';
 import { APIError, asyncHandler } from '../../middleware/error-handler.js';
 import { logger } from '../../utils/logger.js';
+import { sendVerificationEmail } from '../../lib/email.js';
 
 const app = new Hono();
 
@@ -106,6 +106,11 @@ app.post('/', asyncHandler(async (c) => {
   // Hash password
   const passwordHash = await hashPassword(password);
 
+  // Generate verification token (single-use, cryptographically random)
+  // Using 32 bytes = 64 hex characters for strong uniqueness
+  const verificationToken = crypto.randomUUID() + '-' + Date.now() + '-' + crypto.randomUUID();
+  const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
   // Create company
   const company = await db.company.create({
     data: {
@@ -115,7 +120,7 @@ app.post('/', asyncHandler(async (c) => {
 
   logger.info('Company created', { companyId: company.id, companyName });
 
-  // Create owner user
+  // Create owner user (emailVerified=false by default)
   const user = await db.user.create({
     data: {
       companyId: company.id,
@@ -123,53 +128,56 @@ app.post('/', asyncHandler(async (c) => {
       name,
       passwordHash,
       role: 'OWNER',
+      emailVerified: false,
+      verificationToken,
+      verificationTokenExpiry,
     },
   });
 
-  logger.info('User registered', {
+  logger.info('User registered - email verification required', {
     userId: user.id,
     companyId: company.id,
     email: user.email,
   });
 
-  // Generate JWT tokens
-  const jwtSecret = c.env.JWT_SECRET;
-  if (!jwtSecret) {
-    throw new APIError(
-      'SERVER_CONFIGURATION_ERROR',
-      'JWT secret not configured',
-      500
-    );
+  // Determine frontend URL based on environment
+  const frontendUrl = c.env.FRONTEND_URL || 'https://claude-wootestnew.pages.dev';
+
+  // Send verification email
+  const emailResult = await sendVerificationEmail(
+    c.env,
+    user.email,
+    user.name,
+    verificationToken,
+    frontendUrl
+  );
+
+  if (emailResult.success) {
+    logger.info('Verification email sent', { userId: user.id, email: user.email });
+  } else {
+    logger.error('Failed to send verification email', {
+      userId: user.id,
+      email: user.email,
+      error: emailResult.error,
+    });
   }
 
-  const tokenPayload = {
-    userId: user.id,
-    companyId: company.id,
-    role: user.role,
-  };
-
-  const accessToken = await generateAccessToken(tokenPayload, jwtSecret);
-  const refreshToken = await generateRefreshToken(tokenPayload, jwtSecret);
-
-  // Return user data and tokens
+  // Return success WITHOUT tokens
+  // User must verify email first - clicking link will auto-login
   return c.json({
     success: true,
+    message: 'Account created! Check your email to verify and login.',
     data: {
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
-        companyId: user.companyId,
       },
       company: {
         id: company.id,
         name: company.name,
       },
-      tokens: {
-        accessToken,
-        refreshToken,
-      },
+      emailSent: emailResult.success,
     },
   }, 201);
 }));

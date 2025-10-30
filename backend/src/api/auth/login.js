@@ -9,9 +9,10 @@
  * 1. Validate request body (email, password)
  * 2. Find user by email
  * 3. Verify password
- * 4. Generate JWT tokens (access + refresh)
- * 5. Update lastActiveAt timestamp
- * 6. Return user data + tokens
+ * 4. Check if email is verified (required)
+ * 5. Generate JWT tokens (access + refresh)
+ * 6. Update lastActiveAt timestamp
+ * 7. Return user data + tokens
  *
  * Request Body:
  * {
@@ -31,6 +32,10 @@
  *     }
  *   }
  * }
+ *
+ * Error Responses:
+ * - 401: Invalid credentials
+ * - 403: Email not verified (with canResendVerification flag)
  *
  * BEFORE MODIFYING:
  * - Will this change affect existing login sessions?
@@ -93,6 +98,21 @@ app.post('/', asyncHandler(async (c) => {
       'INVALID_CREDENTIALS',
       'Invalid email or password',
       401
+    );
+  }
+
+  // Check if email is verified
+  if (!user.emailVerified) {
+    logger.warn('Login attempt with unverified email', {
+      email,
+      userId: user.id,
+    });
+
+    throw new APIError(
+      'EMAIL_NOT_VERIFIED',
+      'Please verify your email before logging in. Check your inbox for the verification link.',
+      403,
+      { canResendVerification: true }
     );
   }
 

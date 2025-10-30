@@ -45,7 +45,6 @@ import companyRoutes from './api/company/index.js';
 import contactRoutes from './api/contacts/index.js';
 import callRoutes from './api/calls/index.js';
 import conversationRoutes from './api/conversations/index.js';
-import testEmailRoutes from './api/test-email.js';
 
 // Import webhook routes (no auth required - called by external services)
 import webhookRoutes from './webhooks/index.js';
@@ -86,9 +85,6 @@ app.get('/health', (c) => {
     environment: c.env.ENVIRONMENT || 'production',
   });
 });
-
-// Test email endpoint (no authentication - for testing Email Sending setup)
-app.route('/test-email', testEmailRoutes);
 
 // Webhook routes (no authentication - called by external services like Twilio)
 app.route('/webhooks', webhookRoutes);

@@ -28,6 +28,7 @@ function LoginPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
@@ -35,11 +36,13 @@ function LoginPage() {
       [e.target.name]: e.target.value,
     });
     setError('');
+    setEmailNotVerified(false);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setEmailNotVerified(false);
     setLoading(true);
 
     const result = await login(formData.email, formData.password);
@@ -49,6 +52,10 @@ function LoginPage() {
     if (result.success) {
       navigate('/dashboard');
     } else {
+      // Check if error is email not verified
+      if (result.error && result.error.includes('verify your email')) {
+        setEmailNotVerified(true);
+      }
       setError(result.error);
     }
   };
@@ -65,9 +72,26 @@ function LoginPage() {
           </p>
         </div>
 
-        {error && (
+        {error && !emailNotVerified && (
           <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          </div>
+        )}
+
+        {emailNotVerified && (
+          <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p className="text-sm text-yellow-800 dark:text-yellow-300 font-medium mb-2">
+              Email not verified
+            </p>
+            <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-3">
+              {error}
+            </p>
+            <Link
+              to="/resend-verification"
+              className="inline-block text-sm bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              Resend verification email
+            </Link>
           </div>
         )}
 

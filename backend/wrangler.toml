@@ -52,7 +52,6 @@ bucket_name = "claude-wootest-staging"
 # Documentation: https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/
 [[env.staging.send_email]]
 name = "SEND_EMAIL"
-destination_address = "chris@abuntly.com"
 
 # Environment variables (staging)
 [env.staging.vars]

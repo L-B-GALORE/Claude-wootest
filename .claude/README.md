@@ -62,6 +62,18 @@ Before EVERY `git push`, verify:
 2. ✅ Changes are intended for staging environment
 3. ✅ NOT pushing to main unless user explicitly requested production
 
+## Database Schema Changes
+
+**CRITICAL: Automatic schema migration handling**
+
+When modifying `backend/prisma/schema.prisma`:
+1. Claude ALWAYS creates a migration automatically
+2. Claude ALWAYS commits schema + migration files together
+3. Claude NEVER skips this step
+4. User NEVER needs to ask for migrations
+
+See `SCHEMA_CHANGES.md` for complete procedure.
+
 ## Commands
 
 - `/push-to-production` - Initiate production deployment workflow
@@ -70,7 +82,8 @@ Before EVERY `git push`, verify:
 ## Documentation
 
 - `DEPLOYMENT.md` - Full deployment workflow documentation
-- See this file for detailed environment info and procedures
+- `SCHEMA_CHANGES.md` - Mandatory schema migration procedures
+- See these files for detailed procedures and safety measures
 
 ## Quick Reference
 

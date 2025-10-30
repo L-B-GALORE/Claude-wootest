@@ -57,6 +57,7 @@ destination_address = "chris@abuntly.com"
 # Environment variables (staging)
 [env.staging.vars]
 ENVIRONMENT = "staging"
+FRONTEND_URL = "https://staging.claude-wootestnew.pages.dev"
 
 # Durable Objects (staging)
 [[env.staging.durable_objects.bindings]]

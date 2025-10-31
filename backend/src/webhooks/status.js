@@ -132,13 +132,6 @@ app.post('/:channelId', async (c) => {
           where: {
             providerCallId: body.CallSid,
           },
-          include: {
-            message: {
-              include: {
-                conversation: true,
-              },
-            },
-          },
         });
 
         if (voiceCall) {
@@ -176,24 +169,8 @@ app.post('/:channelId', async (c) => {
 
           console.log('[Status] ✅ Updated VoiceCall:', voiceCall.id, 'to status:', updateData.callStatus);
 
-          // Update conversation's lastMessageAt and potentially close it
-          if (voiceCall.message?.conversation) {
-            const conversationUpdate = {
-              lastMessageAt: new Date(),
-            };
-
-            // Close conversation if call ended
-            if (finishedStatuses.includes(body.CallStatus)) {
-              conversationUpdate.status = 'CLOSED';
-            }
-
-            await prisma.conversation.update({
-              where: { id: voiceCall.message.conversation.id },
-              data: conversationUpdate,
-            });
-
-            console.log('[Status] ✅ Updated Conversation:', voiceCall.message.conversation.id);
-          }
+          // Note: Voice calls are standalone and don't update conversations
+          // They're TRANSACTIONAL records, not LINEAR threaded conversations
         } else {
           console.warn('[Status] ⚠️ VoiceCall not found for CallSid:', body.CallSid);
           // This might happen if status webhook arrives before inbound webhook

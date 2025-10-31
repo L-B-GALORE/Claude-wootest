@@ -83,6 +83,8 @@ bucket_name = "customer-service-media"
 # Environment variables (production)
 [env.production.vars]
 ENVIRONMENT = "production"
+FRONTEND_URL = "https://claude-wootestnew.pages.dev"
+ADMIN_EMAIL = "dev@woophone.io"
 
 # Durable Objects (production)
 [[env.production.durable_objects.bindings]]

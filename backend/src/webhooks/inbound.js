@@ -170,13 +170,14 @@ async function generateUnroutedTwiML() {
 
 /**
  * Generate TwiML response for SMS
+ * Returns empty response (no automatic reply)
  */
 async function generateSMSTwiML() {
   const twilio = await import('twilio');
   const MessagingResponse = twilio.default.twiml.MessagingResponse;
 
   const response = new MessagingResponse();
-  response.message('Thank you for your message. We will respond shortly.');
+  // Don't add any message - return empty response so no auto-reply is sent
 
   return response.toString();
 }

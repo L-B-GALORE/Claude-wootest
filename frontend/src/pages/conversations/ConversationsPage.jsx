@@ -51,6 +51,8 @@ function ConversationsPage() {
 
   // Flatten paginated conversations
   const conversations = conversationsData?.pages.flatMap((page) => page.conversations) || [];
+  const totalCount = conversationsData?.pages[0]?.pagination?.total || 0;
+  const currentCount = conversations.length;
 
   // WebSocket connection and event listeners
   useEffect(() => {
@@ -120,11 +122,26 @@ function ConversationsPage() {
       }
     };
 
+    // Handle conversation reopened (from CLOSED to OPEN when new message arrives)
+    const handleConversationReopened = (data) => {
+      console.log('[ConversationsPage] Received conversation_reopened event:', data);
+
+      // Refetch all conversation lists (conversation moved from CLOSED to OPEN)
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+
+      // If viewing this conversation, refresh it
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        queryClient.refetchQueries(['conversation', currentConversationId]);
+      }
+    };
+
     // Subscribe to events
     socketManager.on('new_message', handleNewMessage);
     socketManager.on('message_sent', handleMessageSent);
     socketManager.on('message_status_updated', handleStatusUpdate);
     socketManager.on('conversation_status_updated', handleConversationStatusUpdate);
+    socketManager.on('conversation_reopened', handleConversationReopened);
 
     // Cleanup on unmount
     return () => {
@@ -133,6 +150,7 @@ function ConversationsPage() {
       socketManager.off('message_sent', handleMessageSent);
       socketManager.off('message_status_updated', handleStatusUpdate);
       socketManager.off('conversation_status_updated', handleConversationStatusUpdate);
+      socketManager.off('conversation_reopened', handleConversationReopened);
     };
   }, [user, queryClient]); // queryClient is stable, selectedConversationId tracked via ref
 
@@ -143,7 +161,7 @@ function ConversationsPage() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
+            Showing {currentCount} of {totalCount} conversation{totalCount !== 1 ? 's' : ''}
           </p>
 
           {/* Status Filter Buttons */}

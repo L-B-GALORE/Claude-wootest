@@ -55,19 +55,49 @@ async function findOrCreateConversation(prisma, companyId, contactId, channelId,
   }
 
   // For LINEAR (SMS), find existing or create new
+  // First, try to find an OPEN conversation
   let conversation = await prisma.conversation.findFirst({
     where: {
       companyId,
       contactId,
       channelId,
       type: 'LINEAR',
-      status: { not: 'ARCHIVED' }, // Don't reuse archived conversations
+      status: 'OPEN',
     },
     orderBy: {
       lastMessageAt: 'desc',
     },
   });
 
+  // If no OPEN conversation, find a CLOSED one and reopen it
+  if (!conversation) {
+    conversation = await prisma.conversation.findFirst({
+      where: {
+        companyId,
+        contactId,
+        channelId,
+        type: 'LINEAR',
+        status: 'CLOSED',
+      },
+      orderBy: {
+        lastMessageAt: 'desc',
+      },
+    });
+
+    // If found a CLOSED conversation, reopen it
+    if (conversation) {
+      console.log(`[Inbound] Reopening CLOSED conversation ${conversation.id}`);
+      conversation = await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          status: 'OPEN',
+          lastMessageAt: new Date(),
+        },
+      });
+    }
+  }
+
+  // If still no conversation (neither OPEN nor CLOSED), create a new one
   if (!conversation) {
     conversation = await prisma.conversation.create({
       data: {
@@ -78,6 +108,12 @@ async function findOrCreateConversation(prisma, companyId, contactId, channelId,
         status: 'OPEN',
         lastMessageAt: new Date(),
       },
+    });
+  } else {
+    // Update lastMessageAt for existing OPEN conversation
+    conversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessageAt: new Date() },
     });
   }
 
@@ -315,6 +351,39 @@ app.post('/:channelId', async (c) => {
         } catch (broadcastError) {
           console.error('[Inbound] ⚠️ Failed to broadcast SMS via WebSocket:', broadcastError);
           // Continue anyway
+        }
+
+        // If conversation was reopened (went from CLOSED to OPEN), broadcast status change
+        // This ensures the UI updates conversation lists in real-time
+        const conversationWasReopened = await prisma.conversation.findUnique({
+          where: { id: conversation.id },
+          select: { status: true },
+        });
+
+        if (conversationWasReopened && conversationWasReopened.status === 'OPEN') {
+          try {
+            const durableObjectId = c.env.COMPANY_ROOM.idFromName(channel.company.id);
+            const companyRoom = c.env.COMPANY_ROOM.get(durableObjectId);
+
+            await companyRoom.fetch('https://do.internal/broadcast', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                event: 'conversation_reopened',
+                data: {
+                  conversationId: conversation.id,
+                  contactId: contact.id,
+                  channelId: channel.id,
+                  timestamp: new Date().toISOString(),
+                },
+              }),
+            });
+
+            console.log('[Inbound] ✅ Broadcasted conversation_reopened event');
+          } catch (broadcastError) {
+            console.error('[Inbound] ⚠️ Failed to broadcast conversation_reopened:', broadcastError);
+            // Continue anyway
+          }
         }
       }
 

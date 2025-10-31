@@ -141,6 +141,8 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release Tag
     needs: [deploy-backend-production, deploy-frontend-production]
+    permissions:
+      contents: write  # Required to create tags
 
     steps:
       - name: Checkout code

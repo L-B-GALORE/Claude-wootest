@@ -47,12 +47,6 @@ id = "7800e46f36b54a7c9cea6a73dbf611a3"
 binding = "MEDIA_STORAGE"
 bucket_name = "claude-wootest-staging"
 
-# Email Sending (staging)
-# Requires Email Routing enabled on woophone.io domain
-# Documentation: https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/
-[[env.staging.send_email]]
-name = "SEND_EMAIL"
-
 # Environment variables (staging)
 [env.staging.vars]
 ENVIRONMENT = "staging"

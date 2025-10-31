@@ -1,30 +1,24 @@
 /**
  * Email Sending Utility
  *
- * Purpose: Send transactional emails using Cloudflare Email Sending
+ * Purpose: Send transactional emails using Resend
  *
- * Based on the test email endpoint (backend/src/api/test-email.js)
- * which successfully sent emails from help@woophone.io
+ * Using Resend instead of Cloudflare Email Sending because:
+ * - Production-ready (not beta)
+ * - No recipient restrictions
+ * - Simple API
+ * - Generous free tier (3,000 emails/month)
  *
  * IMPORTANT: To prevent duplicate emails
  * - Each email type should have idempotency (check if already sent)
  * - Use single-use tokens that are invalidated after use
  * - Log email sends to detect duplicates
  *
- * NOTE: During testing, we observed duplicate emails being received.
- * This might be due to:
- * - Browser prefetching/double requests
- * - Cloudflare Email Sending beta behavior
- * - Network retries
- *
  * Mitigation strategies implemented:
  * - Single-use verification tokens
  * - Token invalidation after use
  * - Logging for debugging
  */
-
-import { EmailMessage } from 'cloudflare:email';
-import { createMimeMessage } from 'mimetext';
 
 /**
  * Send verification email to new user
@@ -35,8 +29,8 @@ import { createMimeMessage } from 'mimetext';
  * @param {string} frontendUrl - Frontend URL (staging or production)
  */
 export async function sendVerificationEmail(env, userEmail, userName, verificationToken, frontendUrl) {
-  if (!env.SEND_EMAIL) {
-    console.error('[Email] SEND_EMAIL binding not found - skipping email send');
+  if (!env.RESEND_API_KEY) {
+    console.error('[Email] RESEND_API_KEY not found - skipping email send');
     // Don't throw error - allow signup to complete even if email fails
     return { success: false, error: 'Email sending not configured' };
   }
@@ -44,15 +38,11 @@ export async function sendVerificationEmail(env, userEmail, userName, verificati
   try {
     const verificationUrl = `${frontendUrl}/verify-email?token=${verificationToken}`;
 
-    const msg = createMimeMessage();
-    msg.setSender({ name: 'WooPhone', addr: 'help@woophone.io' });
-    msg.setRecipient(userEmail);
-    msg.setSubject('Verify your WooPhone account');
-
-    // HTML version
-    msg.addMessage({
-      contentType: 'text/html',
-      data: `
+    const emailData = {
+      from: 'WooPhone <help@woophone.io>',
+      to: [userEmail],
+      subject: 'Verify your WooPhone account',
+      html: `
         <!DOCTYPE html>
         <html>
           <head>
@@ -112,12 +102,7 @@ export async function sendVerificationEmail(env, userEmail, userName, verificati
           </body>
         </html>
       `,
-    });
-
-    // Plain text version (fallback)
-    msg.addMessage({
-      contentType: 'text/plain',
-      data: `
+      text: `
 Hi ${userName},
 
 Welcome to WooPhone!
@@ -134,16 +119,29 @@ Need help? Contact us at help@woophone.io
 
 © ${new Date().getFullYear()} WooPhone. All rights reserved.
       `,
+    };
+
+    console.log(`[Email] Sending verification email to ${userEmail} via Resend`);
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailData),
     });
 
-    // Create and send email
-    const message = new EmailMessage('help@woophone.io', userEmail, msg.asRaw());
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('[Email] Resend API error:', response.status, errorData);
+      return { success: false, error: `Resend API error: ${response.status}` };
+    }
 
-    console.log(`[Email] Sending verification email to ${userEmail}`);
-    await env.SEND_EMAIL.send(message);
-    console.log(`[Email] ✅ Verification email sent to ${userEmail}`);
+    const result = await response.json();
+    console.log(`[Email] ✅ Verification email sent to ${userEmail} (ID: ${result.id})`);
 
-    return { success: true };
+    return { success: true, id: result.id };
   } catch (error) {
     console.error('[Email] Error sending verification email:', error);
     // Don't throw - allow signup to complete even if email fails
@@ -160,23 +158,19 @@ Need help? Contact us at help@woophone.io
  * @param {string} frontendUrl - Frontend URL
  */
 export async function sendPasswordResetEmail(env, userEmail, userName, resetToken, frontendUrl) {
-  if (!env.SEND_EMAIL) {
-    console.error('[Email] SEND_EMAIL binding not found - skipping email send');
+  if (!env.RESEND_API_KEY) {
+    console.error('[Email] RESEND_API_KEY not found - skipping email send');
     return { success: false, error: 'Email sending not configured' };
   }
 
   try {
     const resetUrl = `${frontendUrl}/reset-password?token=${resetToken}`;
 
-    const msg = createMimeMessage();
-    msg.setSender({ name: 'WooPhone', addr: 'help@woophone.io' });
-    msg.setRecipient(userEmail);
-    msg.setSubject('Reset your WooPhone password');
-
-    // HTML version
-    msg.addMessage({
-      contentType: 'text/html',
-      data: `
+    const emailData = {
+      from: 'WooPhone <help@woophone.io>',
+      to: [userEmail],
+      subject: 'Reset your WooPhone password',
+      html: `
         <!DOCTYPE html>
         <html>
           <head>
@@ -221,12 +215,7 @@ export async function sendPasswordResetEmail(env, userEmail, userName, resetToke
           </body>
         </html>
       `,
-    });
-
-    // Plain text version
-    msg.addMessage({
-      contentType: 'text/plain',
-      data: `
+      text: `
 Hi ${userName},
 
 We received a request to reset your password. Click the link below to create a new password:
@@ -235,15 +224,29 @@ ${resetUrl}
 
 SECURITY NOTE: This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.
       `,
+    };
+
+    console.log(`[Email] Sending password reset email to ${userEmail} via Resend`);
+
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(emailData),
     });
 
-    const message = new EmailMessage('help@woophone.io', userEmail, msg.asRaw());
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('[Email] Resend API error:', response.status, errorData);
+      return { success: false, error: `Resend API error: ${response.status}` };
+    }
 
-    console.log(`[Email] Sending password reset email to ${userEmail}`);
-    await env.SEND_EMAIL.send(message);
-    console.log(`[Email] ✅ Password reset email sent to ${userEmail}`);
+    const result = await response.json();
+    console.log(`[Email] ✅ Password reset email sent to ${userEmail} (ID: ${result.id})`);
 
-    return { success: true };
+    return { success: true, id: result.id };
   } catch (error) {
     console.error('[Email] Error sending password reset email:', error);
     return { success: false, error: error.message };

@@ -31,9 +31,39 @@ function CallManager() {
     initializeDevice();
     initializeSocket();
 
+    // Handle page visibility changes (app backgrounded/foregrounded)
+    // This is especially important for mobile browsers that close WebSocket connections
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[CallManager] App returned to foreground, checking Twilio connection...');
+
+        // Check if Twilio Device is still registered
+        if (!twilioDevice.isRegistered()) {
+          console.log('[CallManager] Twilio Device disconnected, reconnecting...');
+          setError('Reconnecting...');
+
+          try {
+            await initializeDevice();
+            setError(null);
+            console.log('[CallManager] ✅ Reconnected successfully');
+          } catch (err) {
+            console.error('[CallManager] ❌ Failed to reconnect:', err);
+            setError('Connection lost. Please refresh the page.');
+          }
+        } else {
+          console.log('[CallManager] ✅ Twilio Device still connected');
+        }
+      } else {
+        console.log('[CallManager] App moved to background');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       // Cleanup on unmount
       console.log('[CallManager] Cleaning up...');
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       twilioDevice.destroy();
       socketManager.disconnect();
     };

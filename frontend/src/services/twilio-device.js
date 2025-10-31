@@ -278,6 +278,20 @@ class TwilioDeviceService {
   }
 
   /**
+   * Check if device is registered and ready
+   */
+  isRegistered() {
+    return this.device && this.device.state === 'registered';
+  }
+
+  /**
+   * Get device state
+   */
+  getState() {
+    return this.device ? this.device.state : 'destroyed';
+  }
+
+  /**
    * Destroy device
    */
   destroy() {

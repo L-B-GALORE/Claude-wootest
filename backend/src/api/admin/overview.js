@@ -60,14 +60,14 @@ const app = new Hono();
 app.use('*', authMiddleware);
 
 app.get('/', asyncHandler(async (c) => {
-  const authUser = c.get('user');
+  const userId = c.get('userId');
   const adminEmail = c.env.ADMIN_EMAIL;
 
   const db = getPrisma(c.env.DATABASE_URL);
 
   // Fetch full user record to get email
   const user = await db.user.findUnique({
-    where: { id: authUser.userId },
+    where: { id: userId },
     select: {
       id: true,
       email: true,
@@ -110,11 +110,11 @@ app.get('/', asyncHandler(async (c) => {
           createdAt: true,
         },
       },
-      twilioProviders: {
+      providers: {
         select: {
           id: true,
-          accountSid: true,
-          isActive: true,
+          type: true,
+          status: true,
         },
       },
       channels: {
@@ -165,12 +165,17 @@ app.get('/', asyncHandler(async (c) => {
 
       const owner = company.users[0]; // Should always have an owner
 
+      // Check if company has an active Twilio provider
+      const hasTwilio = company.providers.some(
+        p => p.type === 'TWILIO' && p.status === 'ACTIVE'
+      );
+
       return {
         id: company.id,
         name: company.name,
         createdAt: company.createdAt,
         owner: owner || null,
-        twilioConfigured: company.twilioProviders.length > 0,
+        twilioConfigured: hasTwilio,
         hasActivity: (smsSent + smsReceived + callsMade + callsReceived) > 0,
         stats: {
           smsSent,

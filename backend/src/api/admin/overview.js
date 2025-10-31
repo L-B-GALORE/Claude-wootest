@@ -60,8 +60,27 @@ const app = new Hono();
 app.use('*', authMiddleware);
 
 app.get('/', asyncHandler(async (c) => {
-  const user = c.get('user');
+  const authUser = c.get('user');
   const adminEmail = c.env.ADMIN_EMAIL;
+
+  const db = getPrisma(c.env.DATABASE_URL);
+
+  // Fetch full user record to get email
+  const user = await db.user.findUnique({
+    where: { id: authUser.userId },
+    select: {
+      id: true,
+      email: true,
+    },
+  });
+
+  if (!user) {
+    throw new APIError(
+      'USER_NOT_FOUND',
+      'User not found',
+      404
+    );
+  }
 
   // Check if user is admin
   if (!adminEmail || user.email !== adminEmail) {
@@ -77,8 +96,6 @@ app.get('/', asyncHandler(async (c) => {
   }
 
   logger.info('Admin overview accessed', { adminEmail: user.email });
-
-  const db = getPrisma(c.env.DATABASE_URL);
 
   // Get all companies with their owner and stats
   const companies = await db.company.findMany({

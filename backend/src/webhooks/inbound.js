@@ -124,12 +124,15 @@ async function findOrCreateConversation(prisma, companyId, contactId, channelId,
  * Generate TwiML response for RING_ALL strategy
  * Rings all logged-in users' browsers simultaneously
  */
-async function generateRingAllTwiML(memberIdentities) {
+async function generateRingAllTwiML(memberIdentities, statusCallbackUrl) {
   const twilio = await import('twilio');
   const VoiceResponse = twilio.default.twiml.VoiceResponse;
 
   const response = new VoiceResponse();
-  const dial = response.dial({ timeout: 30 });
+  const dial = response.dial({
+    timeout: 30,
+    action: statusCallbackUrl, // Called when dial completes (answered, no-answer, busy, etc.)
+  });
 
   // Add each member as a client to dial
   memberIdentities.forEach((identity) => {
@@ -490,9 +493,11 @@ app.post('/:channelId', async (c) => {
             // Continue anyway - TwiML will still ring the clients
           }
 
-          // Generate TwiML to ring all members
-          const twiml = await generateRingAllTwiML(memberIdentities);
-          console.log('[Inbound] Generated TwiML:', twiml);
+          // Generate TwiML to ring all members with status callback
+          const baseUrl = new URL(c.req.url).origin;
+          const statusCallbackUrl = `${baseUrl}/webhooks/status/${channel.id}`;
+          const twiml = await generateRingAllTwiML(memberIdentities, statusCallbackUrl);
+          console.log('[Inbound] Generated TwiML with statusCallback:', statusCallbackUrl);
           return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
         } else if (strategy.strategyType === 'NOTIFY_ALL') {
           // Voicemail strategy (not implemented yet)
@@ -511,7 +516,9 @@ app.post('/:channelId', async (c) => {
 
       // USER routing (private line)
       if (channel.routingType === 'USER' && channel.routingTargetId) {
-        const twiml = await generateRingAllTwiML([channel.routingTargetId]);
+        const baseUrl = new URL(c.req.url).origin;
+        const statusCallbackUrl = `${baseUrl}/webhooks/status/${channel.id}`;
+        const twiml = await generateRingAllTwiML([channel.routingTargetId], statusCallbackUrl);
         return c.text(twiml, 200, { 'Content-Type': 'text/xml' });
       }
 

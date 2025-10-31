@@ -97,7 +97,7 @@ app.get('/', async (c) => {
         channel: {
           select: {
             id: true,
-            phoneNumber: true,
+            identifier: true,
             routingType: true,
             routingTargetId: true,
           },

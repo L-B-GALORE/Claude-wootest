@@ -47,33 +47,26 @@ app.get('/', async (c) => {
     const offset = parseInt(c.req.query('offset') || '0', 10);
 
     // Build where clause
-    const where = {};
+    const where = {
+      // Ensure company isolation through contact relation
+      contact: {
+        companyId,
+      },
+    };
 
     // Filter by contact
     if (contactId) {
-      where.message = {
-        conversation: {
-          contactId,
-          companyId,
-        },
-      };
-    } else {
-      // If no contact filter, ensure company isolation
-      where.message = {
-        conversation: {
-          companyId,
-        },
-      };
+      where.contactId = contactId;
     }
 
     // Filter by channel
     if (channelId) {
-      where.message.conversation.channelId = channelId;
+      where.channelId = channelId;
     }
 
     // Filter by inbox
     if (inboxId) {
-      where.message.conversation.channel = {
+      where.channel = {
         routingTargetId: inboxId,
       };
     }
@@ -94,27 +87,19 @@ app.get('/', async (c) => {
     const calls = await prisma.voiceCall.findMany({
       where,
       include: {
-        message: {
-          include: {
-            conversation: {
-              include: {
-                contact: {
-                  select: {
-                    id: true,
-                    name: true,
-                    phoneNumber: true,
-                  },
-                },
-                channel: {
-                  select: {
-                    id: true,
-                    phoneNumber: true,
-                    routingType: true,
-                    routingTargetId: true,
-                  },
-                },
-              },
-            },
+        contact: {
+          select: {
+            id: true,
+            name: true,
+            phoneNumber: true,
+          },
+        },
+        channel: {
+          select: {
+            id: true,
+            phoneNumber: true,
+            routingType: true,
+            routingTargetId: true,
           },
         },
       },
@@ -138,10 +123,9 @@ app.get('/', async (c) => {
       answeredByUserId: call.answeredByUserId,
       createdAt: call.createdAt,
       endedAt: call.endedAt,
-      contact: call.message.conversation.contact,
-      channel: call.message.conversation.channel,
-      direction: call.message.direction,
-      conversationId: call.message.conversationId,
+      contact: call.contact,
+      channel: call.channel,
+      direction: call.direction,
     }));
 
     return c.json({
@@ -184,23 +168,13 @@ app.get('/:id', async (c) => {
     const call = await prisma.voiceCall.findFirst({
       where: {
         id,
-        message: {
-          conversation: {
-            companyId, // Ensure company isolation
-          },
+        contact: {
+          companyId, // Ensure company isolation
         },
       },
       include: {
-        message: {
-          include: {
-            conversation: {
-              include: {
-                contact: true,
-                channel: true,
-              },
-            },
-          },
-        },
+        contact: true,
+        channel: true,
       },
     });
 
@@ -229,19 +203,9 @@ app.get('/:id', async (c) => {
           answeredByUserId: call.answeredByUserId,
           createdAt: call.createdAt,
           endedAt: call.endedAt,
-          contact: call.message.conversation.contact,
-          channel: call.message.conversation.channel,
-          conversation: {
-            id: call.message.conversation.id,
-            type: call.message.conversation.type,
-            status: call.message.conversation.status,
-          },
-          message: {
-            id: call.message.id,
-            direction: call.message.direction,
-            body: call.message.body,
-            createdAt: call.message.createdAt,
-          },
+          contact: call.contact,
+          channel: call.channel,
+          direction: call.direction,
         },
       },
     });

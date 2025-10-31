@@ -75,6 +75,7 @@ jobs:
           echo "${{ secrets.DATABASE_URL_STAGING }}" | npx wrangler secret put DATABASE_URL --env staging
           echo "${{ secrets.ENCRYPTION_KEY_STAGING }}" | npx wrangler secret put ENCRYPTION_KEY --env staging
           echo "${{ secrets.JWT_SECRET }}" | npx wrangler secret put JWT_SECRET --env staging
+          echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY --env staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 

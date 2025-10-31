@@ -85,6 +85,7 @@ jobs:
           echo "${{ secrets.DATABASE_URL_PRODUCTION }}" | npx wrangler secret put DATABASE_URL --env production
           echo "${{ secrets.ENCRYPTION_KEY_PRODUCTION }}" | npx wrangler secret put ENCRYPTION_KEY --env production
           echo "${{ secrets.JWT_SECRET }}" | npx wrangler secret put JWT_SECRET --env production
+          echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY --env production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 

@@ -51,7 +51,7 @@ bucket_name = "claude-wootest-staging"
 [env.staging.vars]
 ENVIRONMENT = "staging"
 FRONTEND_URL = "https://staging.claude-wootestnew.pages.dev"
-ADMIN_EMAIL = "chris@abuntly.com"
+ADMIN_EMAIL = "dev@woophone.io"
 
 # Durable Objects (staging)
 [[env.staging.durable_objects.bindings]]

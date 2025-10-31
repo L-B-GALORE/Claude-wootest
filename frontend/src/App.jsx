@@ -34,6 +34,7 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import ConversationsPage from './pages/conversations/ConversationsPage';
 import ContactsPage from './pages/contacts/ContactsPage';
 import CallHistoryPage from './pages/calls/CallHistoryPage';
+import AdminPage from './pages/admin/AdminPage';
 
 // Settings Pages (each has its own layout wrapper)
 import ProvidersPage from './pages/settings/ProvidersPage';
@@ -72,6 +73,9 @@ function App() {
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/resend-verification" element={<ResendVerificationPage />} />
       </Route>
+
+      {/* Admin route - Full page layout */}
+      <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
 
       {/* Protected routes - Dashboard */}
       <Route

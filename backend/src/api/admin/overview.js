@@ -131,34 +131,42 @@ app.get('/', asyncHandler(async (c) => {
   // Get message stats for each company
   const companiesWithStats = await Promise.all(
     companies.map(async (company) => {
-      // Get SMS stats
+      // Get SMS stats (query through conversation relation)
       const [smsSent, smsReceived] = await Promise.all([
         db.message.count({
           where: {
-            companyId: company.id,
-            direction: 'outbound',
+            conversation: {
+              companyId: company.id,
+            },
+            direction: 'OUTBOUND',
           },
         }),
         db.message.count({
           where: {
-            companyId: company.id,
-            direction: 'inbound',
+            conversation: {
+              companyId: company.id,
+            },
+            direction: 'INBOUND',
           },
         }),
       ]);
 
-      // Get call stats
+      // Get call stats (query through contact relation)
       const [callsMade, callsReceived] = await Promise.all([
         db.voiceCall.count({
           where: {
-            companyId: company.id,
-            direction: 'outbound',
+            contact: {
+              companyId: company.id,
+            },
+            direction: 'OUTBOUND',
           },
         }),
         db.voiceCall.count({
           where: {
-            companyId: company.id,
-            direction: 'inbound',
+            contact: {
+              companyId: company.id,
+            },
+            direction: 'INBOUND',
           },
         }),
       ]);

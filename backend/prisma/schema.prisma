@@ -413,6 +413,7 @@ model Message {
   senderId       String?          @map("sender_id") // Contact ID or User ID
   body           String           @db.Text
   status         MessageStatus    @default(SENT)
+  metadata       Json?            // Error details, retry count, etc.
   createdAt      DateTime         @default(now()) @map("created_at")
 
   // Relations

@@ -410,40 +410,30 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
     },
     onError: (error) => {
       console.error('[MessageThread] Send failed:', error);
-      console.error('[MessageThread] Full error object:', JSON.stringify(error, null, 2));
 
-      // Extract error message from API response
-      let errorMessage = 'Failed to send message. Please check console for details.';
+      // Extract Twilio error
+      let errorMessage = 'Failed to send message';
 
       if (error.response?.data?.error) {
         const apiError = error.response.data.error;
         errorMessage = apiError.message || errorMessage;
 
-        console.error('[MessageThread] API Error:', {
-          code: apiError.code,
-          message: apiError.message,
-          details: apiError.details,
-        });
-
-        // Add more context if available
-        if (apiError.details) {
-          console.error('[MessageThread] Error details:', apiError.details);
-
-          // If Twilio error, add more context
-          if (apiError.details.twilioCode) {
-            errorMessage += ` (Code: ${apiError.details.twilioCode})`;
-          }
+        if (apiError.twilioCode) {
+          errorMessage += ` (Twilio Code: ${apiError.twilioCode})`;
         }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
 
-      console.error('[MessageThread] Displaying error to user:', errorMessage);
+        console.error('[MessageThread] Twilio Error:', {
+          message: apiError.message,
+          code: apiError.twilioCode,
+          status: apiError.twilioStatus,
+          moreInfo: apiError.moreInfo,
+        });
+      }
 
       setSendError(errorMessage);
 
-      // Don't auto-clear - user needs to see this
-      // setTimeout(() => setSendError(null), 10000);
+      // Refetch conversation to show the error in the message itself
+      queryClient.invalidateQueries(['conversation', conversationId]);
     },
   });
 
@@ -768,17 +758,33 @@ function MessageBubble({ message, contact }) {
         <div className="relative">
           {/* Failed Message Banner */}
           {isFailed && !isInbound && (
-            <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-xs">
-              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
-              <span className="text-red-700 dark:text-red-300 flex-1">Failed to send</span>
+            <div className="mb-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+              <div className="flex items-start gap-2 mb-2">
+                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-900 dark:text-red-100">Failed to send</p>
+                  {message.metadata?.error?.message && (
+                    <p className="text-xs text-red-800 dark:text-red-200 mt-1">
+                      {message.metadata.error.message}
+                      {message.metadata.error.code && (
+                        <span className="ml-1 font-mono">(Code: {message.metadata.error.code})</span>
+                      )}
+                    </p>
+                  )}
+                  {message.metadata?.retryCount > 0 && (
+                    <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                      Retry attempts: {message.metadata.retryCount}/3
+                    </p>
+                  )}
+                </div>
+              </div>
               <button
                 onClick={handleRetry}
-                disabled={retrying}
-                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Retry sending this message"
+                disabled={retrying || (message.metadata?.retryCount >= 3)}
+                className="w-full px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <RotateCw className={`w-3 h-3 ${retrying ? 'animate-spin' : ''}`} />
-                <span>{retrying ? 'Retrying...' : 'Retry'}</span>
+                <RotateCw className={`w-4 h-4 ${retrying ? 'animate-spin' : ''}`} />
+                <span>{retrying ? 'Retrying...' : message.metadata?.retryCount >= 3 ? 'Max retries reached' : 'Retry'}</span>
               </button>
             </div>
           )}

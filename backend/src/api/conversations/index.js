@@ -407,52 +407,33 @@ app.post('/:id/messages', async (c) => {
           moreInfo: twilioError.moreInfo,
         });
 
-        // Update message status to FAILED
+        // Update message status to FAILED with error details
         await prisma.message.update({
           where: { id: message.id },
-          data: { status: 'FAILED' },
+          data: {
+            status: 'FAILED',
+            metadata: {
+              error: {
+                message: twilioError.message,
+                code: twilioError.code,
+                status: twilioError.status,
+                moreInfo: twilioError.moreInfo,
+                timestamp: new Date().toISOString(),
+              },
+            },
+          },
         });
 
-        // Extract meaningful error message from Twilio
-        let errorMessage = 'Failed to send message';
-        if (twilioError.message) {
-          errorMessage = twilioError.message;
-        }
-
-        // Add specific error details
-        const errorDetails = {
-          twilioCode: twilioError.code,
-          twilioStatus: twilioError.status,
-        };
-
-        // Provide user-friendly messages for common errors
-        if (twilioError.code === 21408) {
-          errorMessage = 'Permission denied: Your Twilio account does not have permission to send to this number';
-        } else if (twilioError.code === 21610) {
-          errorMessage = 'Unsubscribed number: This recipient has unsubscribed from messages';
-        } else if (twilioError.code === 21614) {
-          errorMessage = 'Invalid phone number: The recipient number is not valid';
-        } else if (twilioError.code === 30007) {
-          errorMessage = 'Message blocked: Carrier has blocked message delivery. PDFs and some file types are often rejected by carriers.';
-        } else if (twilioError.code === 21606) {
-          errorMessage = 'MMS not enabled: Your Twilio phone number is not enabled for sending MMS. Enable MMS in Twilio Console → Phone Numbers → Configure.';
-        } else if (twilioError.code === 21623) {
-          errorMessage = 'File too large: Carrier rejected the attachment. Most carriers limit MMS to 300-600KB even though Twilio allows 5MB.';
-        } else if (twilioError.code === 30008) {
-          errorMessage = 'Unknown destination: The recipient carrier could not be determined. Check the phone number is valid.';
-        } else if (twilioError.code === 30003) {
-          errorMessage = 'Unreachable destination: The recipient\'s carrier cannot receive MMS or has blocked messages.';
-        } else if (twilioError.code === 21612) {
-          errorMessage = 'Cannot route message: This number cannot receive MMS messages.';
-        }
-
+        // Return the EXACT Twilio error message - don't try to be clever
         return c.json(
           {
             success: false,
             error: {
               code: 'SMS_SEND_FAILED',
-              message: errorMessage,
-              details: errorDetails,
+              message: twilioError.message || 'Failed to send message',
+              twilioCode: twilioError.code,
+              twilioStatus: twilioError.status,
+              moreInfo: twilioError.moreInfo,
             },
           },
           500

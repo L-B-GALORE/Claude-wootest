@@ -43,64 +43,23 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
   const handleFileSelect = async (selectedFiles) => {
     const fileArray = Array.from(selectedFiles);
 
-    // Filter out invalid files
+    // Filter out invalid files - only check basics
     const validFiles = fileArray.filter((file) => {
-      // Carrier-safe MMS types (most widely supported)
-      const carrierSafeTypes = [
-        'image/jpeg', 'image/jpg', 'image/png', 'image/gif'
-      ];
-
-      // Types that MAY work but often fail
-      const riskyTypes = [
-        'image/webp',
+      const validTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
         'video/mp4', 'video/quicktime',
         'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav',
         'application/pdf', 'text/plain'
       ];
 
-      const allValidTypes = [...carrierSafeTypes, ...riskyTypes];
-
-      // Check file type first
-      if (!allValidTypes.includes(file.type)) {
-        alert(`❌ ${file.name}: Unsupported file type.\n\n✅ Supported: JPG, PNG, GIF (recommended)\n⚠️ May not work: PDF, WebP, Videos, Audio`);
+      if (!validTypes.includes(file.type)) {
+        alert(`${file.name}: Unsupported file type.`);
         return false;
       }
-
-      // Warn about risky types
-      if (riskyTypes.includes(file.type)) {
-        const fileTypeName = file.type.split('/')[1].toUpperCase();
-        const shouldContinue = window.confirm(
-          `⚠️ WARNING: ${fileTypeName} files often fail with MMS\n\n` +
-          `Many carriers block PDFs, videos, and some audio files.\n\n` +
-          `For best results, use JPG or PNG images.\n\n` +
-          `Continue anyway?`
-        );
-        if (!shouldContinue) {
-          return false;
-        }
-      }
-
-      // Check file size - stricter for MMS
-      // Carriers typically limit to 300KB-600KB even if Twilio allows 5MB
-      const carrierSafeSize = 600 * 1024; // 600KB
 
       if (file.size > maxSizeBytes) {
-        alert(`❌ ${file.name} is too large (${(file.size / 1024 / 1024).toFixed(1)}MB)\n\nMaximum: ${maxSize}MB`);
+        alert(`${file.name} is too large. Maximum size is ${maxSize}MB.`);
         return false;
-      }
-
-      if (file.size > carrierSafeSize) {
-        const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-        const shouldContinue = window.confirm(
-          `⚠️ WARNING: ${file.name} is ${fileSizeMB}MB\n\n` +
-          `Carriers often reject files over 600KB.\n` +
-          `Your file may not deliver to all recipients.\n\n` +
-          `Recommended: Use images under 600KB\n\n` +
-          `Continue anyway?`
-        );
-        if (!shouldContinue) {
-          return false;
-        }
       }
 
       return true;
@@ -244,17 +203,12 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
-          <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
             Drag and drop files here, or click to select
           </p>
-          <div className="mt-2 space-y-1">
-            <p className="text-xs text-green-600 dark:text-green-400">
-              ✅ Best: JPG, PNG, GIF under 600KB
-            </p>
-            <p className="text-xs text-yellow-600 dark:text-yellow-400">
-              ⚠️ May fail: PDFs, videos, large files
-            </p>
-          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+            Images, videos, audio, or PDFs (max {maxSize}MB each)
+          </p>
           <input
             ref={fileInputRef}
             type="file"

@@ -40,7 +40,7 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const handleFileSelect = (selectedFiles) => {
+  const handleFileSelect = async (selectedFiles) => {
     const fileArray = Array.from(selectedFiles);
 
     // Filter out invalid files
@@ -83,6 +83,11 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
     }));
 
     setFiles((prev) => [...prev, ...newFiles]);
+
+    // Auto-upload immediately after selection
+    if (validFiles.length > 0) {
+      setTimeout(() => uploadFilesImmediate(newFiles), 100);
+    }
   };
 
   const handleDrag = (e) => {
@@ -117,27 +122,21 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
     });
   };
 
-  const uploadFiles = async () => {
-    if (files.length === 0) return;
-
+  const uploadFilesImmediate = async (filesToUpload) => {
     setUploading(true);
 
     const uploadedFiles = [];
 
     // Upload each file
-    for (let i = 0; i < files.length; i++) {
-      const fileObj = files[i];
-
-      // Skip already uploaded files
-      if (fileObj.uploaded) {
-        uploadedFiles.push(fileObj.uploadData);
-        continue;
-      }
+    for (let i = 0; i < filesToUpload.length; i++) {
+      const fileObj = filesToUpload[i];
 
       // Mark as uploading
       setFiles((prev) => {
+        const index = prev.findIndex(f => f.file === fileObj.file);
+        if (index === -1) return prev;
         const newFiles = [...prev];
-        newFiles[i].uploading = true;
+        newFiles[index].uploading = true;
         return newFiles;
       });
 
@@ -155,10 +154,12 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
 
         // Mark as uploaded
         setFiles((prev) => {
+          const index = prev.findIndex(f => f.file === fileObj.file);
+          if (index === -1) return prev;
           const newFiles = [...prev];
-          newFiles[i].uploading = false;
-          newFiles[i].uploaded = true;
-          newFiles[i].uploadData = uploadData;
+          newFiles[index].uploading = false;
+          newFiles[index].uploaded = true;
+          newFiles[index].uploadData = uploadData;
           return newFiles;
         });
 
@@ -168,9 +169,11 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
 
         // Mark as error
         setFiles((prev) => {
+          const index = prev.findIndex(f => f.file === fileObj.file);
+          if (index === -1) return prev;
           const newFiles = [...prev];
-          newFiles[i].uploading = false;
-          newFiles[i].error = 'Upload failed';
+          newFiles[index].uploading = false;
+          newFiles[index].error = 'Upload failed';
           return newFiles;
         });
       }
@@ -274,27 +277,6 @@ export default function FileUpload({ onFilesUploaded, maxFiles = 5, maxSize = 5 
               </div>
             </div>
           ))}
-
-          {/* Upload Button */}
-          {files.some((f) => !f.uploaded) && (
-            <button
-              onClick={uploadFiles}
-              disabled={uploading}
-              className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4" />
-                  Upload {files.filter((f) => !f.uploaded).length} file(s)
-                </>
-              )}
-            </button>
-          )}
         </div>
       )}
     </div>

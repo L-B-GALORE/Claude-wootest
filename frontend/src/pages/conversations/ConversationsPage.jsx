@@ -439,16 +439,23 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
+    console.log('[MessageThread] Send clicked:', { messageText, uploadedMedia });
     if (messageText.trim() || uploadedMedia.length > 0) {
+      console.log('[MessageThread] Sending message with media:', uploadedMedia);
       sendMessageMutation.mutate({
-        body: messageText,
+        body: messageText || '', // Ensure body is always a string
         media: uploadedMedia.length > 0 ? uploadedMedia : undefined,
       });
     }
   };
 
   const handleFilesUploaded = (files) => {
-    setUploadedMedia((prev) => [...prev, ...files]);
+    console.log('[MessageThread] Files uploaded:', files);
+    setUploadedMedia((prev) => {
+      const updated = [...prev, ...files];
+      console.log('[MessageThread] Updated media state:', updated);
+      return updated;
+    });
   };
 
   const handleRemoveMedia = (index) => {
@@ -538,7 +545,7 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
       </div>
 
       {/* Message Input */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 relative z-10">
         {/* File Upload Section */}
         {showFileUpload && (
           <div className="mb-4">
@@ -568,11 +575,11 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+        <form onSubmit={handleSendMessage} className="flex gap-2 relative z-10">
           <button
             type="button"
             onClick={() => setShowFileUpload(!showFileUpload)}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
             title="Attach files"
           >
             <Paperclip className={`w-5 h-5 ${showFileUpload ? 'text-primary-600' : 'text-gray-600 dark:text-gray-400'}`} />
@@ -588,10 +595,11 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
           <button
             type="submit"
             disabled={(!messageText.trim() && uploadedMedia.length === 0) || sendMessageMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0 relative z-20"
+            title={uploadedMedia.length > 0 ? `Send with ${uploadedMedia.length} attachment(s)` : 'Send message'}
           >
             <Send className="w-4 h-4" />
-            {sendMessageMutation.isPending ? 'Sending...' : 'Send'}
+            <span className="hidden sm:inline">{sendMessageMutation.isPending ? 'Sending...' : 'Send'}</span>
           </button>
         </form>
       </div>

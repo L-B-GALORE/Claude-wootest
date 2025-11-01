@@ -410,26 +410,40 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
     },
     onError: (error) => {
       console.error('[MessageThread] Send failed:', error);
+      console.error('[MessageThread] Full error object:', JSON.stringify(error, null, 2));
 
       // Extract error message from API response
-      let errorMessage = 'Failed to send message';
+      let errorMessage = 'Failed to send message. Please check console for details.';
 
       if (error.response?.data?.error) {
         const apiError = error.response.data.error;
         errorMessage = apiError.message || errorMessage;
 
+        console.error('[MessageThread] API Error:', {
+          code: apiError.code,
+          message: apiError.message,
+          details: apiError.details,
+        });
+
         // Add more context if available
         if (apiError.details) {
           console.error('[MessageThread] Error details:', apiError.details);
+
+          // If Twilio error, add more context
+          if (apiError.details.twilioCode) {
+            errorMessage += ` (Code: ${apiError.details.twilioCode})`;
+          }
         }
       } else if (error.message) {
         errorMessage = error.message;
       }
 
+      console.error('[MessageThread] Displaying error to user:', errorMessage);
+
       setSendError(errorMessage);
 
-      // Auto-clear error after 10 seconds
-      setTimeout(() => setSendError(null), 10000);
+      // Don't auto-clear - user needs to see this
+      // setTimeout(() => setSendError(null), 10000);
     },
   });
 

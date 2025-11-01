@@ -433,11 +433,17 @@ app.post('/:id/messages', async (c) => {
         } else if (twilioError.code === 21614) {
           errorMessage = 'Invalid phone number: The recipient number is not valid';
         } else if (twilioError.code === 30007) {
-          errorMessage = 'Message blocked: Carrier has blocked message delivery';
+          errorMessage = 'Message blocked: Carrier has blocked message delivery. PDFs and some file types are often rejected by carriers.';
         } else if (twilioError.code === 21606) {
-          errorMessage = 'Invalid from number: The sender number is not enabled for MMS';
+          errorMessage = 'MMS not enabled: Your Twilio phone number is not enabled for sending MMS. Enable MMS in Twilio Console → Phone Numbers → Configure.';
         } else if (twilioError.code === 21623) {
-          errorMessage = 'Media size too large: MMS attachments exceed carrier limits (usually 5MB)';
+          errorMessage = 'File too large: Carrier rejected the attachment. Most carriers limit MMS to 300-600KB even though Twilio allows 5MB.';
+        } else if (twilioError.code === 30008) {
+          errorMessage = 'Unknown destination: The recipient carrier could not be determined. Check the phone number is valid.';
+        } else if (twilioError.code === 30003) {
+          errorMessage = 'Unreachable destination: The recipient\'s carrier cannot receive MMS or has blocked messages.';
+        } else if (twilioError.code === 21612) {
+          errorMessage = 'Cannot route message: This number cannot receive MMS messages.';
         }
 
         return c.json(

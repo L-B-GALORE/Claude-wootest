@@ -333,13 +333,19 @@ app.post('/:id/messages', async (c) => {
 
         // Add media URLs if present
         if (media && media.length > 0) {
-          // Convert R2 keys to public URLs
+          // Import token generation
+          const { generateMediaToken } = await import('../../lib/storage.js');
+
+          // Convert R2 keys to public URLs with tokens
           const mediaUrls = media.map((m) => {
-            // Generate public URL for R2 media
-            return `${baseUrl}/api/v1/media/${m.url}`;
+            // Generate temporary token for this media file (valid 1 hour)
+            const token = generateMediaToken(m.url, c.env.ENCRYPTION_KEY, 3600);
+            // Return public URL with token (no auth required)
+            return `${baseUrl}/api/v1/public-media/${token}`;
           });
           messageParams.mediaUrl = mediaUrls;
-          console.log('[Conversations API] Sending MMS with', mediaUrls.length, 'attachments');
+          console.log('[Conversations API] Sending MMS with', mediaUrls.length, 'public URLs');
+          console.log('[Conversations API] Media URLs:', mediaUrls);
         }
 
         const twilioMessage = await twilioClient.messages.create(messageParams);

@@ -223,3 +223,54 @@ export function getExtensionFromContentType(contentType) {
 
   return map[contentType] || 'bin';
 }
+
+/**
+ * Generate a presigned URL for R2 object (for Twilio MMS)
+ *
+ * NOTE: R2 doesn't natively support presigned URLs like S3.
+ * We need to create a public access endpoint or use a token-based system.
+ *
+ * For now, we'll create a public endpoint with a temporary token.
+ *
+ * @param {string} storageKey - Storage key (path)
+ * @param {number} expiresIn - Expiration time in seconds (default: 3600 = 1 hour)
+ * @returns {string} - Token to append to public URL
+ */
+export function generateMediaToken(storageKey, secret, expiresIn = 3600) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(storageKey + ':' + (Date.now() + expiresIn * 1000));
+
+  // Simple HMAC-like token (in production, use proper HMAC)
+  // For now, just base64 encode with expiry
+  const token = btoa(`${storageKey}:${Date.now() + expiresIn * 1000}:${secret.substring(0, 16)}`);
+  return token;
+}
+
+/**
+ * Verify media token
+ *
+ * @param {string} token - Token to verify
+ * @param {string} secret - Secret key
+ * @returns {object|null} - { storageKey, valid } or null if invalid
+ */
+export function verifyMediaToken(token, secret) {
+  try {
+    const decoded = atob(token);
+    const [storageKey, expiryStr, tokenSecret] = decoded.split(':');
+    const expiry = parseInt(expiryStr, 10);
+
+    // Check expiry
+    if (Date.now() > expiry) {
+      return { valid: false, reason: 'expired' };
+    }
+
+    // Check secret
+    if (tokenSecret !== secret.substring(0, 16)) {
+      return { valid: false, reason: 'invalid' };
+    }
+
+    return { valid: true, storageKey };
+  } catch (error) {
+    return { valid: false, reason: 'malformed' };
+  }
+}

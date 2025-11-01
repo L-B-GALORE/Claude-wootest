@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
@@ -655,8 +655,11 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 function MessageBubble({ message, contact }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const menuRef = useRef(null);
+  const queryClient = useQueryClient();
   const isInbound = message.direction === 'INBOUND';
+  const isFailed = message.status === 'FAILED';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -717,6 +720,28 @@ function MessageBubble({ message, contact }) {
     return message.status === 'FAILED' ? 'Failed' : 'Sent';
   };
 
+  const handleRetry = async () => {
+    try {
+      setRetrying(true);
+      console.log('[MessageBubble] Retrying message:', message.id);
+
+      await api.post(`/api/v1/messages/${message.id}/retry`);
+
+      console.log('[MessageBubble] Retry successful');
+
+      // Refetch conversation to show updated message
+      queryClient.invalidateQueries(['conversation']);
+      queryClient.invalidateQueries(['conversations']);
+    } catch (error) {
+      console.error('[MessageBubble] Retry failed:', error);
+
+      const errorMsg = error.response?.data?.error?.message || 'Failed to retry message';
+      alert(errorMsg);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   return (
     <div className={`flex group ${isInbound ? 'justify-start' : 'justify-end'}`}>
       <div className={`flex items-end gap-2 max-w-xl ${isInbound ? 'flex-row' : 'flex-row-reverse'}`}>
@@ -727,11 +752,30 @@ function MessageBubble({ message, contact }) {
         )}
 
         <div className="relative">
+          {/* Failed Message Banner */}
+          {isFailed && !isInbound && (
+            <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-xs">
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+              <span className="text-red-700 dark:text-red-300 flex-1">Failed to send</span>
+              <button
+                onClick={handleRetry}
+                disabled={retrying}
+                className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Retry sending this message"
+              >
+                <RotateCw className={`w-3 h-3 ${retrying ? 'animate-spin' : ''}`} />
+                <span>{retrying ? 'Retrying...' : 'Retry'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Message Content */}
           <div className="flex items-start gap-2">
             <div
               className={`px-4 py-2 rounded-lg ${
-                isInbound
+                isFailed
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-900 dark:text-red-100 border-2 border-red-300 dark:border-red-700'
+                  : isInbound
                   ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
                   : 'bg-primary-600 text-white'
               }`}

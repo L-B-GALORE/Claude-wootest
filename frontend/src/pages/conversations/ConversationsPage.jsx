@@ -358,6 +358,7 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [uploadedMedia, setUploadedMedia] = useState([]);
   const [recentlySentMessage, setRecentlySentMessage] = useState(false);
+  const [sendError, setSendError] = useState(null);
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
 
@@ -390,19 +391,45 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async ({ body, media }) => {
-      await api.post(`/api/v1/conversations/${conversationId}/messages`, {
+      console.log('[MessageThread] Sending to API:', { body, media });
+      const response = await api.post(`/api/v1/conversations/${conversationId}/messages`, {
         body,
         media,
       });
+      return response.data;
     },
     onSuccess: () => {
-      console.log('[MessageThread] Message sent, enabling aggressive polling for status updates');
+      console.log('[MessageThread] Message sent successfully');
       setRecentlySentMessage(true); // Start aggressive polling
       queryClient.invalidateQueries(['conversation', conversationId]);
       queryClient.invalidateQueries(['conversations']);
       setMessageText('');
       setUploadedMedia([]);
       setShowFileUpload(false);
+      setSendError(null); // Clear any previous errors
+    },
+    onError: (error) => {
+      console.error('[MessageThread] Send failed:', error);
+
+      // Extract error message from API response
+      let errorMessage = 'Failed to send message';
+
+      if (error.response?.data?.error) {
+        const apiError = error.response.data.error;
+        errorMessage = apiError.message || errorMessage;
+
+        // Add more context if available
+        if (apiError.details) {
+          console.error('[MessageThread] Error details:', apiError.details);
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setSendError(errorMessage);
+
+      // Auto-clear error after 10 seconds
+      setTimeout(() => setSendError(null), 10000);
     },
   });
 
@@ -546,6 +573,23 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 
       {/* Message Input */}
       <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 relative z-10">
+        {/* Error Banner */}
+        {sendError && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">Failed to send message</p>
+              <p className="text-sm text-red-700 dark:text-red-300 mt-1">{sendError}</p>
+            </div>
+            <button
+              onClick={() => setSendError(null)}
+              className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* File Upload Section */}
         {showFileUpload && (
           <div className="mb-4">

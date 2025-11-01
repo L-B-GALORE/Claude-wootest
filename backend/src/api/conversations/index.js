@@ -394,6 +394,12 @@ app.post('/:id/messages', async (c) => {
         }
       } catch (twilioError) {
         console.error('[Conversations API] Twilio error:', twilioError);
+        console.error('[Conversations API] Twilio error details:', {
+          message: twilioError.message,
+          code: twilioError.code,
+          status: twilioError.status,
+          moreInfo: twilioError.moreInfo,
+        });
 
         // Update message status to FAILED
         await prisma.message.update({
@@ -401,12 +407,40 @@ app.post('/:id/messages', async (c) => {
           data: { status: 'FAILED' },
         });
 
+        // Extract meaningful error message from Twilio
+        let errorMessage = 'Failed to send message';
+        if (twilioError.message) {
+          errorMessage = twilioError.message;
+        }
+
+        // Add specific error details
+        const errorDetails = {
+          twilioCode: twilioError.code,
+          twilioStatus: twilioError.status,
+        };
+
+        // Provide user-friendly messages for common errors
+        if (twilioError.code === 21408) {
+          errorMessage = 'Permission denied: Your Twilio account does not have permission to send to this number';
+        } else if (twilioError.code === 21610) {
+          errorMessage = 'Unsubscribed number: This recipient has unsubscribed from messages';
+        } else if (twilioError.code === 21614) {
+          errorMessage = 'Invalid phone number: The recipient number is not valid';
+        } else if (twilioError.code === 30007) {
+          errorMessage = 'Message blocked: Carrier has blocked message delivery';
+        } else if (twilioError.code === 21606) {
+          errorMessage = 'Invalid from number: The sender number is not enabled for MMS';
+        } else if (twilioError.code === 21623) {
+          errorMessage = 'Media size too large: MMS attachments exceed carrier limits (usually 5MB)';
+        }
+
         return c.json(
           {
             success: false,
             error: {
               code: 'SMS_SEND_FAILED',
-              message: 'Failed to send SMS',
+              message: errorMessage,
+              details: errorDetails,
             },
           },
           500

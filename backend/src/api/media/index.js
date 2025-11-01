@@ -128,7 +128,10 @@ app.post('/upload', async (c) => {
         success: false,
         error: {
           code: 'UPLOAD_FAILED',
-          message: 'Failed to upload file',
+          message: error.message || 'Failed to upload file',
+          details: {
+            errorType: error.name,
+          },
         },
       },
       500

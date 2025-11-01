@@ -46,6 +46,7 @@ import contactRoutes from './api/contacts/index.js';
 import callRoutes from './api/calls/index.js';
 import conversationRoutes from './api/conversations/index.js';
 import adminRoutes from './api/admin/index.js';
+import mediaRoutes from './api/media/index.js';
 
 // Import webhook routes (no auth required - called by external services)
 import webhookRoutes from './webhooks/index.js';
@@ -154,6 +155,9 @@ api.route('/conversations', conversationRoutes);
 
 api.use('/admin/*', authMiddleware);
 api.route('/admin', adminRoutes);
+
+api.use('/media/*', authMiddleware);
+api.route('/media', mediaRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

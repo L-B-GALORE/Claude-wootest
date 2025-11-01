@@ -23,6 +23,14 @@ import { getPrisma } from '../lib/prisma.js';
 import { validateWebhookSignature } from '../lib/twilio.js';
 import { decryptCredentials } from '../lib/encryption.js';
 import { findOrCreateContact } from '../services/contact-service.js';
+import {
+  downloadExternalMedia,
+  uploadFile,
+  generateStorageKey,
+  getFileCategory,
+  isValidMmsFileType,
+  getExtensionFromContentType,
+} from '../lib/storage.js';
 
 const app = new Hono();
 
@@ -291,7 +299,7 @@ app.post('/:channelId', async (c) => {
 
         console.log('[Inbound] VoiceCall created:', voiceCall.id, 'CallSid:', body.CallSid);
       } else if (isSMS) {
-        // For SMS: Create conversation → message → sms_message (threaded)
+        // For SMS/MMS: Create conversation → message → sms_message (threaded)
         conversation = await findOrCreateConversation(
           prisma,
           channel.companyId,
@@ -302,14 +310,17 @@ app.post('/:channelId', async (c) => {
 
         console.log('[Inbound] Conversation:', conversation.id, 'LINEAR');
 
-        const messageBody = body.Body || '(No message body)';
+        const messageBody = body.Body || '';
+        const numMedia = parseInt(body.NumMedia || '0', 10);
+
+        console.log('[Inbound] Message has', numMedia, 'media attachments');
 
         message = await prisma.message.create({
           data: {
             conversationId: conversation.id,
             direction: 'INBOUND',
             senderType: 'CONTACT',
-            body: messageBody,
+            body: messageBody || (numMedia > 0 ? '(Media message)' : '(No message body)'),
             status: 'SENT',
           },
         });
@@ -326,6 +337,78 @@ app.post('/:channelId', async (c) => {
         });
 
         console.log('[Inbound] SmsMessage created:', smsMessage.id, 'MessageSid:', body.MessageSid);
+
+        // Handle MMS media attachments
+        if (numMedia > 0) {
+          console.log('[Inbound] Processing', numMedia, 'MMS attachments...');
+
+          // Decrypt Twilio credentials for downloading media
+          const credentials = await decryptCredentials(
+            channel.provider.credentials,
+            c.env.ENCRYPTION_KEY
+          );
+
+          for (let i = 0; i < numMedia; i++) {
+            const mediaUrl = body[`MediaUrl${i}`];
+            const mediaContentType = body[`MediaContentType${i}`];
+
+            if (!mediaUrl || !mediaContentType) {
+              console.warn('[Inbound] Missing media URL or content type for index', i);
+              continue;
+            }
+
+            // Validate media type
+            if (!isValidMmsFileType(mediaContentType)) {
+              console.warn('[Inbound] Unsupported media type:', mediaContentType);
+              continue;
+            }
+
+            try {
+              // Download media from Twilio
+              const { data, contentType, size } = await downloadExternalMedia(
+                mediaUrl,
+                credentials.authToken,
+                credentials.accountSid
+              );
+
+              // Generate filename
+              const extension = getExtensionFromContentType(contentType);
+              const filename = `mms_${body.MessageSid}_${i}.${extension}`;
+
+              // Upload to R2
+              const storageKey = generateStorageKey(channel.companyId, message.id, filename);
+              await uploadFile(c.env.MEDIA_STORAGE, storageKey, data, {
+                contentType,
+                custom: {
+                  messageId: message.id,
+                  conversationId: conversation.id,
+                  companyId: channel.companyId,
+                  originalUrl: mediaUrl,
+                },
+              });
+
+              // Create MessageMedia record
+              await prisma.messageMedia.create({
+                data: {
+                  messageId: message.id,
+                  type: getFileCategory(contentType),
+                  url: storageKey, // Store R2 key (not full URL)
+                  filename,
+                  sizeBytes: size,
+                  metadata: {
+                    contentType,
+                    originalUrl: mediaUrl,
+                  },
+                },
+              });
+
+              console.log('[Inbound] ✅ Processed MMS attachment:', filename);
+            } catch (mediaError) {
+              console.error('[Inbound] ⚠️ Failed to process media attachment', i, ':', mediaError);
+              // Continue processing other attachments
+            }
+          }
+        }
 
         // Broadcast new SMS message via WebSocket
         try {

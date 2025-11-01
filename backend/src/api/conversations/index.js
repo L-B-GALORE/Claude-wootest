@@ -171,6 +171,7 @@ app.get('/:id', async (c) => {
         messages: {
           include: {
             smsMessage: true,
+            media: true, // Include media attachments
           },
           orderBy: {
             createdAt: 'asc', // Oldest first (chronological order)
@@ -215,9 +216,9 @@ app.get('/:id', async (c) => {
 
 /**
  * POST /conversations/:id/messages
- * Send a new SMS message in a conversation
+ * Send a new SMS/MMS message in a conversation
  *
- * Body: { body: string }
+ * Body: { body: string, media?: Array<{ url: string, type: string, filename: string, size: number }> }
  */
 app.post('/:id/messages', async (c) => {
   try {
@@ -227,16 +228,16 @@ app.post('/:id/messages', async (c) => {
     const prisma = getPrisma(c.env.DATABASE_URL);
 
     const body = await c.req.json();
-    const { body: messageBody } = body;
+    const { body: messageBody, media } = body;
 
-    // Validate required fields
-    if (!messageBody || !messageBody.trim()) {
+    // Validate: either body or media is required
+    if ((!messageBody || !messageBody.trim()) && (!media || media.length === 0)) {
       return c.json(
         {
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Message body is required',
+            message: 'Message body or media attachments are required',
           },
         },
         400
@@ -279,12 +280,31 @@ app.post('/:id/messages', async (c) => {
         direction: 'OUTBOUND',
         senderType: 'USER',
         senderId: userId,
-        body: messageBody,
+        body: messageBody || (media && media.length > 0 ? '(Media message)' : ''),
         status: 'SENT',
       },
     });
 
-    // Send SMS via Twilio (if provider is Twilio)
+    // Create MessageMedia records for attachments
+    if (media && media.length > 0) {
+      for (const attachment of media) {
+        await prisma.messageMedia.create({
+          data: {
+            messageId: message.id,
+            type: attachment.type,
+            url: attachment.url,
+            filename: attachment.filename,
+            sizeBytes: attachment.size,
+            metadata: {
+              contentType: attachment.contentType,
+            },
+          },
+        });
+      }
+      console.log('[Conversations API] Created', media.length, 'media records');
+    }
+
+    // Send SMS/MMS via Twilio (if provider is Twilio)
     if (conversation.channel.provider.type === 'TWILIO') {
       const twilio = await import('twilio');
       const { decryptCredentials } = await import('../../lib/encryption.js');
@@ -301,14 +321,28 @@ app.post('/:id/messages', async (c) => {
         const baseUrl = c.req.url.split('/api/')[0]; // Get base URL from request
         const statusCallbackUrl = `${baseUrl}/webhooks/status/${conversation.channel.id}`;
 
-        console.log('[Conversations API] Sending SMS with status callback:', statusCallbackUrl);
+        console.log('[Conversations API] Sending SMS/MMS with status callback:', statusCallbackUrl);
 
-        const twilioMessage = await twilioClient.messages.create({
-          body: messageBody,
+        // Prepare message params
+        const messageParams = {
+          body: messageBody || undefined, // Twilio allows MMS without body
           from: conversation.channel.identifier,
           to: conversation.contact.phoneNumber,
           statusCallback: statusCallbackUrl,
-        });
+        };
+
+        // Add media URLs if present
+        if (media && media.length > 0) {
+          // Convert R2 keys to public URLs
+          const mediaUrls = media.map((m) => {
+            // Generate public URL for R2 media
+            return `${baseUrl}/api/v1/media/${m.url}`;
+          });
+          messageParams.mediaUrl = mediaUrls;
+          console.log('[Conversations API] Sending MMS with', mediaUrls.length, 'attachments');
+        }
+
+        const twilioMessage = await twilioClient.messages.create(messageParams);
 
         // Create SMS message record
         await prisma.smsMessage.create({

@@ -12,10 +12,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2 } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
+import FileUpload from '../../components/media/FileUpload';
+import MediaAttachment from '../../components/media/MediaAttachment';
 
 function ConversationsPage() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
@@ -353,6 +355,8 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
 // Message Thread Component
 function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   const [messageText, setMessageText] = useState('');
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [uploadedMedia, setUploadedMedia] = useState([]);
   const [recentlySentMessage, setRecentlySentMessage] = useState(false);
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
@@ -385,8 +389,11 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 
   // Send message mutation
   const sendMessageMutation = useMutation({
-    mutationFn: async (body) => {
-      await api.post(`/api/v1/conversations/${conversationId}/messages`, { body });
+    mutationFn: async ({ body, media }) => {
+      await api.post(`/api/v1/conversations/${conversationId}/messages`, {
+        body,
+        media,
+      });
     },
     onSuccess: () => {
       console.log('[MessageThread] Message sent, enabling aggressive polling for status updates');
@@ -394,6 +401,8 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
       queryClient.invalidateQueries(['conversation', conversationId]);
       queryClient.invalidateQueries(['conversations']);
       setMessageText('');
+      setUploadedMedia([]);
+      setShowFileUpload(false);
     },
   });
 
@@ -430,9 +439,20 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    if (messageText.trim()) {
-      sendMessageMutation.mutate(messageText);
+    if (messageText.trim() || uploadedMedia.length > 0) {
+      sendMessageMutation.mutate({
+        body: messageText,
+        media: uploadedMedia.length > 0 ? uploadedMedia : undefined,
+      });
     }
+  };
+
+  const handleFilesUploaded = (files) => {
+    setUploadedMedia((prev) => [...prev, ...files]);
+  };
+
+  const handleRemoveMedia = (index) => {
+    setUploadedMedia((prev) => prev.filter((_, i) => i !== index));
   };
 
   if (isLoading) {
@@ -519,7 +539,44 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 
       {/* Message Input */}
       <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
+        {/* File Upload Section */}
+        {showFileUpload && (
+          <div className="mb-4">
+            <FileUpload onFilesUploaded={handleFilesUploaded} />
+          </div>
+        )}
+
+        {/* Uploaded Media Preview */}
+        {uploadedMedia.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {uploadedMedia.map((media, index) => (
+              <div
+                key={index}
+                className="relative bg-gray-100 dark:bg-gray-700 rounded-lg p-2 flex items-center gap-2 pr-8"
+              >
+                <span className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-xs">
+                  {media.filename}
+                </span>
+                <button
+                  onClick={() => handleRemoveMedia(index)}
+                  className="absolute top-1 right-1 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                >
+                  <XCircle className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <form onSubmit={handleSendMessage} className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowFileUpload(!showFileUpload)}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            title="Attach files"
+          >
+            <Paperclip className={`w-5 h-5 ${showFileUpload ? 'text-primary-600' : 'text-gray-600 dark:text-gray-400'}`} />
+          </button>
           <input
             type="text"
             value={messageText}
@@ -530,7 +587,7 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
           />
           <button
             type="submit"
-            disabled={!messageText.trim() || sendMessageMutation.isPending}
+            disabled={(!messageText.trim() && uploadedMedia.length === 0) || sendMessageMutation.isPending}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             <Send className="w-4 h-4" />
@@ -627,7 +684,17 @@ function MessageBubble({ message, contact }) {
                   : 'bg-primary-600 text-white'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+              {/* Media Attachments */}
+              {message.media && message.media.length > 0 && (
+                <div className="mb-2">
+                  <MediaAttachment media={message.media} isInbound={isInbound} />
+                </div>
+              )}
+
+              {/* Message Text */}
+              {message.body && message.body !== '(Media message)' && (
+                <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+              )}
             </div>
 
             {/* 3-dot menu */}

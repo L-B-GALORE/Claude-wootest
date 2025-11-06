@@ -156,13 +156,34 @@ export async function checkTwiMLApp(client, twimlAppSid, expectedBaseUrl) {
  */
 export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppSid) {
   try {
-    console.log('[Health Check] Testing API Key by generating access token...');
+    console.log('[Health Check] Testing API Key by verifying it exists in Twilio...');
 
     const twilio = await import('twilio');
+
+    // CRITICAL: Try to create a client with the API Key credentials and make a real API call
+    // This will only work if the API Key actually exists in Twilio
+    const client = twilio.default(apiKeySid, apiKeySecret, {
+      accountSid: accountSid,
+    });
+
+    // Try to make a simple API call to verify the credentials work
+    try {
+      await client.api.v2010.accounts(accountSid).fetch();
+    } catch (authError) {
+      // If we get an authentication error, the API Key doesn't exist or is invalid
+      console.error('[Health Check] API Key authentication failed:', authError.message);
+      return {
+        status: 'fail',
+        message: 'API Key does not exist in Twilio or is invalid',
+        canAutoFix: true,
+        error: authError.message,
+      };
+    }
+
+    // Also test token generation to be thorough
     const AccessToken = twilio.default.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    // Test by generating an access token - this is what actually matters for calling
     const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
       identity: 'health-check-test',
       ttl: 60,
@@ -185,11 +206,11 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
       };
     }
 
-    console.log('[Health Check] API Key successfully generated valid token');
+    console.log('[Health Check] API Key exists in Twilio and can generate tokens');
 
     return {
       status: 'pass',
-      message: 'API Key is valid and can generate access tokens',
+      message: 'API Key is valid',
       canAutoFix: false,
     };
   } catch (error) {

@@ -47,8 +47,17 @@ export default function HealthCheckModal({ isOpen, onClose, provider, onFixed })
       if (response.data.success) {
         const fixData = response.data.data;
 
-        // Run health check again to show updated status
-        await runHealthCheck();
+        // IMPORTANT: Use the afterHealth result from the fix API response
+        // The fix API already ran a health check after waiting for credentials to activate
+        // Running our own health check immediately would be too soon
+        if (fixData.afterHealth) {
+          console.log('[HealthCheckModal] Using post-fix health check from API response');
+          setHealthResults(fixData.afterHealth);
+        } else {
+          // Fallback: Run health check again if afterHealth is not available
+          console.warn('[HealthCheckModal] No afterHealth in response, running manual check');
+          await runHealthCheck();
+        }
 
         // Notify parent if any fixes were made
         if (Object.keys(fixData.fixed).length > 0) {

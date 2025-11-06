@@ -44,6 +44,9 @@ import ProfilePage from './pages/settings/ProfilePage';
 import TeamPage from './pages/settings/TeamPage';
 import CompanyPage from './pages/settings/CompanyPage';
 
+// Debug Pages
+import DebugTwilio from './pages/DebugTwilio';
+
 // Protected Route Component
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -99,6 +102,9 @@ function App() {
       <Route path="/settings/company" element={<ProtectedRoute key="company"><CompanyPage key="company-page" /></ProtectedRoute>} />
       <Route path="/settings/team" element={<ProtectedRoute key="team"><TeamPage key="team-page" /></ProtectedRoute>} />
       <Route path="/settings/profile" element={<ProtectedRoute key="profile"><ProfilePage key="profile-page" /></ProtectedRoute>} />
+
+      {/* Debug routes */}
+      <Route path="/debug/twilio" element={<ProtectedRoute><DebugTwilio /></ProtectedRoute>} />
 
       {/* Redirect root to dashboard or login */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

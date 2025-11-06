@@ -135,7 +135,13 @@ app.post('/', async (c) => {
       },
     });
 
-    // Step 4: Run health check again with updated provider to confirm fixes
+    // Step 4: Wait a moment for Twilio to activate new credentials
+    if (fixResults.credentialsUpdated) {
+      console.log('[Auto-Fix API] Credentials were updated, waiting 3 seconds for Twilio activation...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+
+    // Step 5: Run health check again with updated provider to confirm fixes
     console.log('[Auto-Fix API] Running post-fix health check...');
     const postFixHealthResults = await runFullHealthCheck(
       updatedProvider,

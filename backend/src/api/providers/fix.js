@@ -126,10 +126,19 @@ app.post('/', async (c) => {
       prisma
     );
 
-    // Step 3: Run health check again to confirm fixes
+    // Step 3: Re-fetch provider to get updated credentials
+    console.log('[Auto-Fix API] Re-fetching provider with updated credentials...');
+    const updatedProvider = await prisma.provider.findFirst({
+      where: {
+        id: providerId,
+        companyId: companyId,
+      },
+    });
+
+    // Step 4: Run health check again with updated provider to confirm fixes
     console.log('[Auto-Fix API] Running post-fix health check...');
     const postFixHealthResults = await runFullHealthCheck(
-      provider,
+      updatedProvider,
       channels,
       baseUrl,
       c.env.ENCRYPTION_KEY

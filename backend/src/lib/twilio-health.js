@@ -147,7 +147,7 @@ export async function checkTwiMLApp(client, twimlAppSid, expectedBaseUrl) {
 }
 
 /**
- * Check if API Key is valid by attempting to generate an access token
+ * Check if API Key is valid by actually connecting to Twilio with it
  * @param {string} accountSid - Twilio Account SID
  * @param {string} apiKeySid - API Key SID
  * @param {string} apiKeySecret - API Key Secret
@@ -156,14 +156,28 @@ export async function checkTwiMLApp(client, twimlAppSid, expectedBaseUrl) {
  */
 export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppSid) {
   try {
+    console.log('[Health Check] Testing API Key by creating Twilio client...');
+
     const twilio = await import('twilio');
+
+    // CRITICAL: Test by actually using the API Key to authenticate with Twilio
+    // This will fail if the API Key doesn't exist or is invalid
+    const client = twilio.default(apiKeySid, apiKeySecret, {
+      accountSid: accountSid,
+    });
+
+    // Try to fetch the account to verify the API Key works
+    await client.api.v2010.accounts(accountSid).fetch();
+
+    console.log('[Health Check] API Key successfully authenticated with Twilio');
+
+    // Also verify we can generate a valid token structure
     const AccessToken = twilio.default.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    // Try to create an access token
     const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
       identity: 'health-check-test',
-      ttl: 60, // 1 minute
+      ttl: 60,
     });
 
     const voiceGrant = new VoiceGrant({
@@ -172,21 +186,49 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
     });
 
     token.addGrant(voiceGrant);
+    const jwt = token.toJwt();
 
-    // Generate JWT - will fail if API key is invalid
-    token.toJwt();
+    if (!jwt || jwt.length === 0) {
+      return {
+        status: 'fail',
+        message: 'Token generation returned empty JWT',
+        canAutoFix: true,
+        error: 'Empty JWT',
+      };
+    }
 
     return {
       status: 'pass',
-      message: 'API Key is valid',
+      message: 'API Key is valid and authenticated with Twilio',
       canAutoFix: false,
     };
   } catch (error) {
     console.error('[Health Check] API Key check failed:', error.message);
+
+    // Check if it's an authentication error
+    if (error.status === 401 || error.code === 20003) {
+      return {
+        status: 'fail',
+        message: `API Key authentication failed: ${error.message}`,
+        canAutoFix: true,
+        error: error.message,
+      };
+    }
+
+    // Check if it's a "not found" error
+    if (error.status === 404 || error.code === 20404) {
+      return {
+        status: 'fail',
+        message: 'API Key no longer exists in Twilio account',
+        canAutoFix: true,
+        error: error.message,
+      };
+    }
+
     return {
       status: 'fail',
-      message: `API Key is invalid or expired: ${error.message}`,
-      canAutoFix: true, // We can create a new API key
+      message: `API Key validation failed: ${error.message}`,
+      canAutoFix: true,
       error: error.message,
     };
   }

@@ -206,6 +206,49 @@ export async function updateProviderCredentials(prisma, providerId, newCredentia
 }
 
 /**
+ * Verify that token generation works with the fixed credentials
+ * @param {object} credentials - Provider credentials
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+async function verifyTokenGeneration(credentials) {
+  try {
+    console.log('[Auto-Fix] Verifying token generation works...');
+
+    const { generateAccessToken } = await import('./twilio.js');
+
+    // Try to generate a test token
+    const token = await generateAccessToken(
+      credentials.accountSid,
+      credentials.apiKeySid,
+      credentials.apiKeySecret,
+      credentials.twimlAppSid,
+      'test-user-id',
+      'Test User'
+    );
+
+    if (token && token.length > 0) {
+      console.log('[Auto-Fix] Token generation verified successfully');
+      return {
+        success: true,
+        message: 'Token generation verified',
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Token generation returned empty token',
+      };
+    }
+  } catch (error) {
+    console.error('[Auto-Fix] Token generation verification failed:', error);
+    return {
+      success: false,
+      message: `Token generation failed: ${error.message}`,
+      error: error.message,
+    };
+  }
+}
+
+/**
  * Attempt to fix all fixable issues
  * @param {object} healthCheckResults - Results from runFullHealthCheck
  * @param {object} provider - Provider record from database
@@ -213,7 +256,7 @@ export async function updateProviderCredentials(prisma, providerId, newCredentia
  * @param {string} baseUrl - Base URL for webhooks
  * @param {string} encryptionKey - Encryption key
  * @param {object} prisma - Prisma client instance
- * @returns {Promise<{fixed: object, cantFix: object, credentialsUpdated: boolean}>}
+ * @returns {Promise<{fixed: object, cantFix: object, credentialsUpdated: boolean, tokenVerified: boolean}>}
  */
 export async function fixAll(
   healthCheckResults,
@@ -229,6 +272,7 @@ export async function fixAll(
     fixed: {},
     cantFix: {},
     credentialsUpdated: false,
+    tokenVerified: false,
   };
 
   // Import required modules
@@ -371,6 +415,17 @@ export async function fixAll(
     } else {
       results.cantFix.credentialUpdate = credentialUpdate.message;
     }
+  }
+
+  // Verify token generation works with final credentials
+  const tokenCheck = await verifyTokenGeneration(updatedCredentials);
+  results.tokenVerified = tokenCheck.success;
+
+  if (!tokenCheck.success) {
+    console.error('[Auto-Fix] Token generation verification failed after fixes');
+    results.cantFix.tokenGeneration = tokenCheck.message;
+  } else {
+    console.log('[Auto-Fix] Token generation verified - calling should work now');
   }
 
   console.log('[Auto-Fix] Complete:', results);

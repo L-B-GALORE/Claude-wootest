@@ -45,12 +45,28 @@ export default function HealthCheckModal({ isOpen, onClose, provider, onFixed })
     try {
       const response = await api.post(`/api/v1/providers/${provider.id}/fix`);
       if (response.data.success) {
+        const fixData = response.data.data;
+
         // Run health check again to show updated status
         await runHealthCheck();
 
         // Notify parent if any fixes were made
-        if (Object.keys(response.data.data.fixed).length > 0) {
+        if (Object.keys(fixData.fixed).length > 0) {
           onFixed?.();
+
+          // If token generation was verified, show success message
+          if (fixData.tokenVerified) {
+            alert(
+              'All issues fixed successfully!\n\n' +
+              'Voice calling is now working. Please refresh the page to reconnect the Twilio Device.'
+            );
+          } else if (fixData.cantFix?.tokenGeneration) {
+            alert(
+              'Issues were fixed, but token generation is still failing:\n\n' +
+              fixData.cantFix.tokenGeneration +
+              '\n\nPlease check the health check results for more details.'
+            );
+          }
         }
       }
     } catch (err) {

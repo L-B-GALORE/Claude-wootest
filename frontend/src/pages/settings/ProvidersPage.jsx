@@ -5,9 +5,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Mail, Trash2 } from 'lucide-react';
+import { Mail, Trash2, Activity } from 'lucide-react';
 import ConnectTwilioModal from '../../components/modals/ConnectTwilioModal';
 import ImportNumbersModal from '../../components/modals/ImportNumbersModal';
+import HealthCheckModal from '../../components/modals/HealthCheckModal';
 import SettingsLayout from './SettingsLayout';
 import api from '../../services/api';
 
@@ -16,6 +17,7 @@ function ProvidersPageContent() {
   const [loading, setLoading] = useState(true);
   const [showTwilioModal, setShowTwilioModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showHealthModal, setShowHealthModal] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
 
   useEffect(() => {
@@ -48,6 +50,16 @@ function ProvidersPageContent() {
   const handleOpenImport = (provider) => {
     setSelectedProvider(provider);
     setShowImportModal(true);
+  };
+
+  const handleOpenHealthCheck = (provider) => {
+    setSelectedProvider(provider);
+    setShowHealthModal(true);
+  };
+
+  const handleHealthCheckFixed = () => {
+    // Refresh providers list after fixes
+    fetchProviders();
   };
 
   const handleDisconnectProvider = async (provider) => {
@@ -111,7 +123,7 @@ function ProvidersPageContent() {
                     </p>
                     {twilioProvider ? (
                       <>
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
                             Connected • {twilioProvider.channelCount} channel{twilioProvider.channelCount !== 1 ? 's' : ''}
                           </span>
@@ -120,6 +132,13 @@ function ProvidersPageContent() {
                             className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
                           >
                             Import numbers
+                          </button>
+                          <button
+                            onClick={() => handleOpenHealthCheck(twilioProvider)}
+                            className="flex items-center gap-1 text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                          >
+                            <Activity className="w-3.5 h-3.5" />
+                            Check health
                           </button>
                         </div>
                       </>
@@ -178,6 +197,13 @@ function ProvidersPageContent() {
         onClose={() => setShowImportModal(false)}
         providerId={selectedProvider?.id}
         onSuccess={handleNumbersImported}
+      />
+
+      <HealthCheckModal
+        isOpen={showHealthModal}
+        onClose={() => setShowHealthModal(false)}
+        provider={selectedProvider}
+        onFixed={handleHealthCheckFixed}
       />
     </div>
   );

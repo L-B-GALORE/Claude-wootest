@@ -8,6 +8,8 @@
  * - GET    /providers - List all providers
  * - GET    /providers/:id/available-numbers - Get importable Twilio numbers
  * - POST   /providers/:id/import-channels - Import selected numbers
+ * - GET    /providers/:id/health - Run health check on provider integration
+ * - POST   /providers/:id/fix - Auto-fix provider integration issues
  * - DELETE /providers/:id - Disconnect provider
  *
  * BEFORE MODIFYING:
@@ -21,6 +23,8 @@ import { getPrisma } from '../../lib/prisma.js';
 import connectTwilio from './connect-twilio.js';
 import getAvailableNumbers from './get-available-numbers.js';
 import importChannels from './import-channels.js';
+import healthCheck from './health.js';
+import autoFix from './fix.js';
 
 const app = new Hono();
 
@@ -148,6 +152,12 @@ app.route('/:providerId/available-numbers', getAvailableNumbers);
 
 // Import channels from provider
 app.route('/:providerId/import-channels', importChannels);
+
+// Health check provider integration
+app.route('/:providerId/health', healthCheck);
+
+// Auto-fix provider integration issues
+app.route('/:providerId/fix', autoFix);
 
 // Disconnect provider
 app.delete('/:id', async (c) => {

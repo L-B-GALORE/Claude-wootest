@@ -92,16 +92,16 @@ function App() {
         <Route path="/contacts" element={<ContactsPage />} />
         <Route path="/calls" element={<CallHistoryPage />} />
         <Route path="/conversations" element={<ConversationsPage />} />
-      </Route>
 
-      {/* Settings routes - each is independent with unique keys to force remounting */}
-      <Route path="/settings" element={<Navigate to="/settings/providers" replace />} />
-      <Route path="/settings/providers" element={<ProtectedRoute key="providers"><ProvidersPage key="providers-page" /></ProtectedRoute>} />
-      <Route path="/settings/channels" element={<ProtectedRoute key="channels"><ChannelsPage key="channels-page" /></ProtectedRoute>} />
-      <Route path="/settings/inboxes" element={<ProtectedRoute key="inboxes"><InboxesPage key="inboxes-page" /></ProtectedRoute>} />
-      <Route path="/settings/company" element={<ProtectedRoute key="company"><CompanyPage key="company-page" /></ProtectedRoute>} />
-      <Route path="/settings/team" element={<ProtectedRoute key="team"><TeamPage key="team-page" /></ProtectedRoute>} />
-      <Route path="/settings/profile" element={<ProtectedRoute key="profile"><ProfilePage key="profile-page" /></ProtectedRoute>} />
+        {/* Settings routes - now inside DashboardLayout to show sidebar and call widget */}
+        <Route path="/settings" element={<Navigate to="/settings/providers" replace />} />
+        <Route path="/settings/providers" element={<ProvidersPage key="providers-page" />} />
+        <Route path="/settings/channels" element={<ChannelsPage key="channels-page" />} />
+        <Route path="/settings/inboxes" element={<InboxesPage key="inboxes-page" />} />
+        <Route path="/settings/company" element={<CompanyPage key="company-page" />} />
+        <Route path="/settings/team" element={<TeamPage key="team-page" />} />
+        <Route path="/settings/profile" element={<ProfilePage key="profile-page" />} />
+      </Route>
 
       {/* Debug routes */}
       <Route path="/debug/twilio" element={<ProtectedRoute><DebugTwilio /></ProtectedRoute>} />

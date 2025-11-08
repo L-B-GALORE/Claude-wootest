@@ -135,6 +135,20 @@ app.post('/', async (c) => {
       },
     });
 
+    // Decrypt and log what credentials we re-fetched
+    const { decryptCredentials } = await import('../../lib/encryption.js');
+    const refetchedCreds = await decryptCredentials(
+      updatedProvider.credentials,
+      c.env.ENCRYPTION_KEY
+    );
+    console.log('[Auto-Fix API] ✓ Re-fetched provider credentials from database:', {
+      accountSid: refetchedCreds.accountSid,
+      apiKeySid: refetchedCreds.apiKeySid,
+      twimlAppSid: refetchedCreds.twimlAppSid,
+      hasAuthToken: !!refetchedCreds.authToken,
+      hasApiKeySecret: !!refetchedCreds.apiKeySecret,
+    });
+
     // Step 4: Wait a moment for Twilio to activate new credentials
     if (fixResults.credentialsUpdated) {
       console.log('[Auto-Fix API] Credentials were updated, waiting 3 seconds for Twilio activation...');

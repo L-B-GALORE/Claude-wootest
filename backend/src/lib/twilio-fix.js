@@ -103,6 +103,11 @@ export async function fixAPIKey(accountSid, authToken, companyName) {
 
     const newKey = await createTwilioAPIKey(accountSid, authToken, friendlyName);
 
+    console.log('[Auto-Fix] ✓ Created API Key in Twilio:', {
+      sid: newKey.sid,
+      friendlyName: friendlyName,
+    });
+
     return {
       success: true,
       apiKeySid: newKey.sid,
@@ -342,6 +347,11 @@ export async function fixAll(
       updatedCredentials.apiKeySid = apiKeyFix.apiKeySid;
       updatedCredentials.apiKeySecret = apiKeyFix.apiKeySecret;
       needsCredentialUpdate = true;
+
+      console.log('[Auto-Fix] ✓ Updated credentials object with new API Key:', {
+        apiKeySid: apiKeyFix.apiKeySid,
+        willSaveToDatabase: true,
+      });
     } else {
       results.cantFix.apiKey = apiKeyFix.message;
     }
@@ -402,6 +412,14 @@ export async function fixAll(
   // Update credentials in database if needed
   if (needsCredentialUpdate) {
     console.log('[Auto-Fix] Credentials were updated, saving to database...');
+    console.log('[Auto-Fix] Saving credentials:', {
+      accountSid: updatedCredentials.accountSid,
+      apiKeySid: updatedCredentials.apiKeySid,
+      twimlAppSid: updatedCredentials.twimlAppSid,
+      hasAuthToken: !!updatedCredentials.authToken,
+      hasApiKeySecret: !!updatedCredentials.apiKeySecret,
+    });
+
     const credentialUpdate = await updateProviderCredentials(
       prisma,
       provider.id,
@@ -411,7 +429,7 @@ export async function fixAll(
 
     if (credentialUpdate.success) {
       results.credentialsUpdated = true;
-      console.log('[Auto-Fix] Credentials updated successfully');
+      console.log('[Auto-Fix] ✓ Credentials saved to database successfully');
     } else {
       results.cantFix.credentialUpdate = credentialUpdate.message;
     }

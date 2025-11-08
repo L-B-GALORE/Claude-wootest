@@ -10,9 +10,9 @@
  * https://documentation.onesignal.com/reference/create-notification
  */
 
-import { Router } from 'itty-router';
+import { Hono } from 'hono';
 
-const router = Router({ base: '/notifications' });
+const app = new Hono();
 
 /**
  * POST /notifications/test
@@ -27,27 +27,39 @@ const router = Router({ base: '/notifications' });
  * - message: string
  * - notificationId: OneSignal notification ID
  */
-router.post('/test', async (request, env, ctx) => {
+app.post('/test', async (c) => {
   try {
-    const { playerId } = await request.json();
+    const { playerId } = await c.req.json();
 
     if (!playerId) {
-      return new Response(JSON.stringify({ error: 'Player ID is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'MISSING_PLAYER_ID',
+            message: 'Player ID is required',
+          },
+        },
+        400
+      );
     }
 
     // Get OneSignal credentials from environment
-    const appId = env.ONESIGNAL_APP_ID;
-    const restApiKey = env.ONESIGNAL_REST_API_KEY;
+    const appId = c.env.ONESIGNAL_APP_ID;
+    const restApiKey = c.env.ONESIGNAL_REST_API_KEY;
 
     if (!appId || !restApiKey) {
       console.error('[Notifications] OneSignal credentials not configured');
-      return new Response(JSON.stringify({ error: 'OneSignal not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: 'ONESIGNAL_NOT_CONFIGURED',
+            message: 'OneSignal credentials are not configured',
+          },
+        },
+        500
+      );
     }
 
     // Send notification via OneSignal REST API
@@ -77,45 +89,40 @@ router.post('/test', async (request, env, ctx) => {
 
     if (!response.ok) {
       console.error('[Notifications] OneSignal API error:', result);
-      return new Response(
-        JSON.stringify({
-          error: result.errors?.[0] || 'Failed to send notification',
-          details: result,
-        }),
+      return c.json(
         {
-          status: response.status,
-          headers: { 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: {
+            code: 'ONESIGNAL_API_ERROR',
+            message: result.errors?.[0] || 'Failed to send notification',
+            details: result,
+          },
+        },
+        response.status
       );
     }
 
     console.log('[Notifications] Test notification sent successfully:', result.id);
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Test notification sent successfully',
-        notificationId: result.id,
-        recipients: result.recipients,
-      }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    return c.json({
+      success: true,
+      message: 'Test notification sent successfully',
+      notificationId: result.id,
+      recipients: result.recipients,
+    });
   } catch (error) {
     console.error('[Notifications] Error sending test notification:', error);
-    return new Response(
-      JSON.stringify({
-        error: 'Internal server error',
-        message: error.message,
-      }),
+    return c.json(
       {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: error.message,
+        },
+      },
+      500
     );
   }
 });
 
-export default router;
+export default app;

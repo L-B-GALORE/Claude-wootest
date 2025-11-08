@@ -5,13 +5,25 @@ This document explains how to complete the OneSignal setup for push notification
 ## Overview
 
 OneSignal has been integrated for web push notifications. The implementation includes:
-- Frontend: OneSignal Web SDK with permission management
+- Frontend: OneSignal Web SDK v16 with permission management
 - Backend: OneSignal REST API integration for sending notifications
 - UI: Settings > Notifications page for testing
 
+## Current Status
+
+✅ **Completed:**
+- Frontend OneSignal SDK integration (initialized in index.html)
+- NotificationsPage UI with enable/test functionality
+- Backend notification endpoint (POST /api/v1/notifications/test)
+- Proper SDK initialization using OneSignalDeferred pattern
+
+⏳ **Remaining:**
+- Set Cloudflare Worker secrets for OneSignal credentials
+- Test end-to-end notification flow
+
 ## Required Secrets
 
-You need to add two secrets to your Cloudflare Worker for both staging and production environments:
+You need to add two secrets to your Cloudflare Worker for staging (and later production) environments:
 
 ### 1. ONESIGNAL_APP_ID
 ```bash
@@ -39,9 +51,13 @@ echo "os_v2_app_puy4oj5tyzf37ih2kubs22kfju2fhhtma7zuvjnaodb2oar5xmg6ikwgkuj5uunr
 ## How It Works
 
 ### Frontend
-- **OneSignal SDK** is loaded from CDN in `index.html`
-- **Initialization** happens in `main.jsx` on app startup
-- **Config** is in `config/onesignal.js` with App ID and helper functions
+- **OneSignal SDK** is loaded from CDN in `index.html` (v16)
+- **Initialization** happens in `index.html` using `OneSignalDeferred` array (official v16 pattern)
+- **Config** is in `config/onesignal.js` with helper functions:
+  - `waitForOneSignal()` - Ensures SDK is loaded before use
+  - `requestNotificationPermission()` - Prompts user and returns Player ID
+  - `isSubscribed()` - Checks if user has granted permission
+  - `getPlayerId()` - Gets current subscription ID
 - **UI** is in `pages/settings/NotificationsPage.jsx` for permission and testing
 
 ### Backend
@@ -63,10 +79,8 @@ echo "os_v2_app_puy4oj5tyzf37ih2kubs22kfju2fhhtma7zuvjnaodb2oar5xmg6ikwgkuj5uunr
 ## Files Modified
 
 ### Frontend
-- `package.json` - Added react-onesignal dependency
-- `index.html` - Added OneSignal SDK script tag
-- `main.jsx` - Initialize OneSignal on app startup
-- `config/onesignal.js` - OneSignal configuration and helpers (NEW)
+- `index.html` - Added OneSignal SDK v16 script tag and initialization via OneSignalDeferred
+- `config/onesignal.js` - OneSignal helper functions with waitForOneSignal() (NEW)
 - `pages/settings/NotificationsPage.jsx` - Notifications UI (NEW)
 - `App.jsx` - Added notifications route
 - `pages/settings/SettingsLayout.jsx` - Added Notifications nav item
@@ -89,3 +103,20 @@ For production use, you may want to:
 Access your OneSignal dashboard at: https://onesignal.com/
 - App ID: `7d31c727-b3c6-4bbf-a0fa-55032d69454d`
 - View delivery analytics, manage segments, and configure notification settings
+
+## Troubleshooting
+
+### "OneSignal SDK not loaded" error
+- This has been fixed by using the `OneSignalDeferred` initialization pattern
+- The SDK is now initialized in `index.html` before React loads
+- A `waitForOneSignal()` helper ensures the SDK is ready before any operations
+
+### Permission request not showing
+- Make sure you're on HTTPS or localhost (OneSignal requirement)
+- Check browser console for initialization messages
+- Verify the App ID in `index.html` matches your OneSignal app
+
+### Test notification not sending
+- Verify both secrets are set in Cloudflare Worker
+- Check backend logs for OneSignal API errors
+- Ensure Player ID is displayed in the UI (means subscription successful)

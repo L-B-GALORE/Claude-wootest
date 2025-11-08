@@ -1,40 +1,41 @@
 /**
  * OneSignal Configuration
  *
- * Purpose: Initialize OneSignal Web Push SDK
+ * Purpose: Helper functions for OneSignal Web Push SDK
  *
  * Features:
- * - OneSignal SDK initialization
  * - Permission prompting
  * - Player ID (subscription ID) retrieval
+ * - Subscription status checking
+ *
+ * Note: OneSignal is initialized in index.html via OneSignalDeferred
  */
 
 export const ONESIGNAL_APP_ID = '7d31c727-b3c6-4bbf-a0fa-55032d69454d';
 
 /**
- * Initialize OneSignal SDK
- * Call this once when the app loads
+ * Wait for OneSignal SDK to be ready
  */
-export async function initOneSignal() {
-  if (typeof window === 'undefined' || !window.OneSignal) {
-    console.warn('[OneSignal] SDK not loaded yet');
-    return;
-  }
+function waitForOneSignal() {
+  return new Promise((resolve, reject) => {
+    if (window.OneSignal) {
+      resolve(window.OneSignal);
+      return;
+    }
 
-  try {
-    await window.OneSignal.init({
-      appId: ONESIGNAL_APP_ID,
-      allowLocalhostAsSecureOrigin: true, // For local development
-      notifyButton: {
-        enable: false, // We'll use custom UI
-      },
-    });
+    // Wait up to 10 seconds for SDK to load
+    const timeout = setTimeout(() => {
+      reject(new Error('OneSignal SDK failed to load'));
+    }, 10000);
 
-    console.log('[OneSignal] Initialized successfully');
-  } catch (error) {
-    console.error('[OneSignal] Initialization failed:', error);
-    throw error;
-  }
+    const checkInterval = setInterval(() => {
+      if (window.OneSignal) {
+        clearInterval(checkInterval);
+        clearTimeout(timeout);
+        resolve(window.OneSignal);
+      }
+    }, 100);
+  });
 }
 
 /**
@@ -42,28 +43,23 @@ export async function initOneSignal() {
  * Returns the OneSignal Player ID (subscription ID)
  */
 export async function requestNotificationPermission() {
-  if (!window.OneSignal) {
-    throw new Error('OneSignal SDK not loaded');
-  }
-
   try {
-    // Request permission
-    const permission = await window.OneSignal.Notifications.requestPermission();
+    const OneSignal = await waitForOneSignal();
 
-    if (!permission) {
-      throw new Error('Notification permission denied');
-    }
+    // Request permission using slidedown prompt
+    await OneSignal.Slidedown.promptPush();
 
-    console.log('[OneSignal] Permission granted');
+    // Wait a bit for the permission to be processed
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Get the Player ID (subscription ID)
-    const playerId = await window.OneSignal.User.PushSubscription.id;
+    const playerId = await OneSignal.User.PushSubscription.id;
 
     if (!playerId) {
-      throw new Error('Failed to get OneSignal Player ID');
+      throw new Error('Failed to get OneSignal Player ID. User may have denied permission.');
     }
 
-    console.log('[OneSignal] Player ID:', playerId);
+    console.log('[OneSignal] Permission granted, Player ID:', playerId);
     return playerId;
   } catch (error) {
     console.error('[OneSignal] Permission request failed:', error);
@@ -75,12 +71,9 @@ export async function requestNotificationPermission() {
  * Check if user is subscribed to push notifications
  */
 export async function isSubscribed() {
-  if (!window.OneSignal) {
-    return false;
-  }
-
   try {
-    const permission = await window.OneSignal.Notifications.permission;
+    const OneSignal = await waitForOneSignal();
+    const permission = await OneSignal.Notifications.permission;
     return permission === 'granted';
   } catch (error) {
     console.error('[OneSignal] Failed to check subscription:', error);
@@ -92,12 +85,9 @@ export async function isSubscribed() {
  * Get current OneSignal Player ID if subscribed
  */
 export async function getPlayerId() {
-  if (!window.OneSignal) {
-    return null;
-  }
-
   try {
-    const playerId = await window.OneSignal.User.PushSubscription.id;
+    const OneSignal = await waitForOneSignal();
+    const playerId = await OneSignal.User.PushSubscription.id;
     return playerId || null;
   } catch (error) {
     console.error('[OneSignal] Failed to get Player ID:', error);

@@ -79,6 +79,7 @@ model User {
   sentMessages        Message[]          @relation("UserSentMessages")
   answeredCalls       VoiceCall[]
   activityLogs        ActivityLog[]
+  pushTokens          PushToken[]
 
   @@unique([companyId, email])
   @@index([companyId])
@@ -580,4 +581,26 @@ model ActivityLog {
   @@index([createdAt])
   @@index([entityType])
   @@map("activity_logs")
+}
+
+// ============================================================================
+// PUSH NOTIFICATIONS
+// ============================================================================
+
+model PushToken {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  token       String   // Firebase Cloud Messaging (FCM) token
+  deviceInfo  Json?    @map("device_info") // user agent, platform, etc.
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, token]) // Prevent duplicate tokens for same user
+  @@index([userId])
+  @@index([token])
+  @@map("push_tokens")
 }

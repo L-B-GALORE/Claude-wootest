@@ -48,6 +48,8 @@ export async function requestNotificationPermission(userId) {
   try {
     const OneSignal = await waitForOneSignal();
 
+    console.log('[OneSignal] Starting permission request for user:', userId);
+
     // Set external_id to link OneSignal subscription to our user database
     // This is required for User Model (SDK v16+) to properly track users
     if (userId) {
@@ -55,20 +57,42 @@ export async function requestNotificationPermission(userId) {
       console.log('[OneSignal] User logged in with external_id:', userId);
     }
 
-    // Request permission using slidedown prompt
-    await OneSignal.Slidedown.promptPush();
+    // Use native browser prompt (more reliable than slidedown)
+    // This directly requests browser notification permission
+    const permissionGranted = await OneSignal.Notifications.requestPermission();
 
-    // Wait a bit for the permission to be processed
-    await new Promise(resolve => setTimeout(resolve, 500));
+    console.log('[OneSignal] Permission result:', permissionGranted);
+
+    if (!permissionGranted) {
+      throw new Error('Notification permission was denied. Please allow notifications in your browser settings.');
+    }
+
+    // Wait for the subscription to be created
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Check if we have a push subscription
+    const isPushSupported = await OneSignal.Notifications.isPushSupported();
+    console.log('[OneSignal] Push supported:', isPushSupported);
+
+    if (!isPushSupported) {
+      throw new Error('Push notifications are not supported in this browser.');
+    }
 
     // Get the Player ID (subscription ID)
     const playerId = await OneSignal.User.PushSubscription.id;
 
     if (!playerId) {
-      throw new Error('Failed to get OneSignal Player ID. User may have denied permission.');
+      // Check the actual permission state
+      const permission = await OneSignal.Notifications.permission;
+      console.error('[OneSignal] No Player ID. Permission state:', permission);
+
+      throw new Error(
+        'Failed to create push subscription. ' +
+        'Please ensure notifications are allowed in your browser settings and try again.'
+      );
     }
 
-    console.log('[OneSignal] Permission granted, Player ID:', playerId);
+    console.log('[OneSignal] Successfully subscribed! Player ID:', playerId);
     return playerId;
   } catch (error) {
     console.error('[OneSignal] Permission request failed:', error);

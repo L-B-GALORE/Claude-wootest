@@ -75,13 +75,14 @@ function NotificationsPage() {
       const response = await api.post('/notifications/test', { playerId });
       setTestResult({
         success: true,
-        message: 'Test notification sent! Check your browser for the notification.'
+        message: response.data.message || 'Test notification sent! Check your browser for the notification.'
       });
     } catch (error) {
       console.error('Failed to send test notification:', error);
+      const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to send test notification';
       setTestResult({
         success: false,
-        message: error.response?.data?.error || 'Failed to send test notification'
+        message: errorMessage
       });
     } finally {
       setIsSendingTest(false);

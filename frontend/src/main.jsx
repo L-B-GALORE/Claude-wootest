@@ -22,7 +22,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { initOneSignal } from './config/onesignal';
 import './index.css';
 
 // Create React Query client
@@ -48,13 +47,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 );
-
-// Initialize OneSignal after the app is rendered
-// Wait for SDK to load (it's loaded with defer attribute)
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => initOneSignal().catch(console.error), 100);
-  });
-} else {
-  setTimeout(() => initOneSignal().catch(console.error), 100);
-}

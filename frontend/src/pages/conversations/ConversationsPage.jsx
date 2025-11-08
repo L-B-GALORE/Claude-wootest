@@ -65,6 +65,16 @@ function ConversationsPage() {
     // Connect WebSocket
     socketManager.connect(user.id, user.companyId);
 
+    // Handle WebSocket connected/reconnected - refetch data to catch any missed messages
+    const handleSocketConnected = () => {
+      console.log('[ConversationsPage] WebSocket (re)connected - refreshing data to catch missed messages');
+      queryClient.invalidateQueries(['conversations']);
+      const currentConversationId = selectedConversationIdRef.current;
+      if (currentConversationId) {
+        queryClient.refetchQueries(['conversation', currentConversationId]);
+      }
+    };
+
     // Handle new incoming messages
     const handleNewMessage = (data) => {
       console.log('[ConversationsPage] Received new_message event:', data);
@@ -139,6 +149,7 @@ function ConversationsPage() {
     };
 
     // Subscribe to events
+    socketManager.on('socket_connected', handleSocketConnected);
     socketManager.on('new_message', handleNewMessage);
     socketManager.on('message_sent', handleMessageSent);
     socketManager.on('message_status_updated', handleStatusUpdate);
@@ -148,6 +159,7 @@ function ConversationsPage() {
     // Cleanup on unmount
     return () => {
       console.log('[ConversationsPage] Cleaning up WebSocket listeners');
+      socketManager.off('socket_connected', handleSocketConnected);
       socketManager.off('new_message', handleNewMessage);
       socketManager.off('message_sent', handleMessageSent);
       socketManager.off('message_status_updated', handleStatusUpdate);
@@ -155,6 +167,26 @@ function ConversationsPage() {
       socketManager.off('conversation_reopened', handleConversationReopened);
     };
   }, [user, queryClient]); // queryClient is stable, selectedConversationId tracked via ref
+
+  // Handle tab visibility changes - refetch when user returns to tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[ConversationsPage] Tab became visible - refreshing conversations');
+        queryClient.invalidateQueries(['conversations']);
+        const currentConversationId = selectedConversationIdRef.current;
+        if (currentConversationId) {
+          queryClient.refetchQueries(['conversation', currentConversationId]);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [queryClient]);
 
   return (
     <div className="h-full flex bg-gray-100 dark:bg-gray-900">
@@ -363,7 +395,9 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   const queryClient = useQueryClient();
 
   // Fetch conversation with messages
-  // Use aggressive polling when we recently sent a message (fallback for WebSocket timing)
+  // Use aggressive polling as reliable fallback for WebSocket failures
+  // - 2s after sending a message (for immediate status updates)
+  // - 5s normally (catches messages if WebSocket drops)
   const { data: conversationData, isLoading } = useQuery({
     queryKey: ['conversation', conversationId],
     queryFn: async () => {
@@ -371,7 +405,7 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
       return response.data.data.conversation;
     },
     enabled: !!conversationId,
-    refetchInterval: recentlySentMessage ? 2000 : 60000, // Poll every 2s after send, then 60s
+    refetchInterval: recentlySentMessage ? 2000 : 5000, // Poll every 2s after send, then 5s
     refetchOnMount: 'always',
     staleTime: 0,
   });

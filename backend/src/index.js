@@ -49,6 +49,7 @@ import adminRoutes from './api/admin/index.js';
 import mediaRoutes from './api/media/index.js';
 import publicMediaRoutes from './api/public-media/index.js';
 import messageRetryRoutes from './api/messages/retry.js';
+import notificationRoutes from './api/notifications/index.js';
 
 // Import webhook routes (no auth required - called by external services)
 import webhookRoutes from './webhooks/index.js';
@@ -166,6 +167,9 @@ api.route('/public-media', publicMediaRoutes);
 
 api.use('/messages/*', authMiddleware);
 api.route('/messages', messageRetryRoutes);
+
+api.use('/notifications/*', authMiddleware);
+api.route('/notifications', notificationRoutes);
 
 // Mount API routes
 app.route('/api/v1', api);

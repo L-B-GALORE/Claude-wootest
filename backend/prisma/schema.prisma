@@ -581,3 +581,4 @@ model ActivityLog {
   @@index([entityType])
   @@map("activity_logs")
 }
+

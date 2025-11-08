@@ -43,7 +43,6 @@ import InboxesPage from './pages/settings/InboxesPage';
 import ProfilePage from './pages/settings/ProfilePage';
 import TeamPage from './pages/settings/TeamPage';
 import CompanyPage from './pages/settings/CompanyPage';
-import NotificationsPage from './pages/settings/NotificationsPage';
 
 // Debug Pages
 import DebugTwilio from './pages/DebugTwilio';
@@ -102,7 +101,6 @@ function App() {
         <Route path="/settings/company" element={<CompanyPage key="company-page" />} />
         <Route path="/settings/team" element={<TeamPage key="team-page" />} />
         <Route path="/settings/profile" element={<ProfilePage key="profile-page" />} />
-        <Route path="/settings/notifications" element={<NotificationsPage key="notifications-page" />} />
       </Route>
 
       {/* Debug routes */}

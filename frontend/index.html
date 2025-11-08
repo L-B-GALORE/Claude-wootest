@@ -13,6 +13,8 @@
         await OneSignal.init({
           appId: "7d31c727-b3c6-4bbf-a0fa-55032d69454d",
           allowLocalhostAsSecureOrigin: true,
+          serviceWorkerParam: { scope: '/' },
+          serviceWorkerPath: '/OneSignalSDKWorker.js',
         });
         console.log('[OneSignal] Initialized successfully');
       });

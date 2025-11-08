@@ -12,12 +12,15 @@
 import { useState, useEffect } from 'react';
 import { Bell, Check, X, Send } from 'lucide-react';
 import SettingsLayout from './SettingsLayout';
-import { requestNotificationPermission, isSubscribed, getPlayerId } from '../../config/onesignal';
+import { requestNotificationPermission, isSubscribed, getPlayerId, getOneSignalId } from '../../config/onesignal';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 
 function NotificationsPage() {
+  const { user } = useAuth();
   const [subscriptionStatus, setSubscriptionStatus] = useState('checking'); // checking, subscribed, not_subscribed
   const [playerId, setPlayerId] = useState(null);
+  const [oneSignalId, setOneSignalId] = useState(null);
   const [isEnabling, setIsEnabling] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testResult, setTestResult] = useState(null); // { success: boolean, message: string }
@@ -34,7 +37,9 @@ function NotificationsPage() {
 
       if (subscribed) {
         const id = await getPlayerId();
+        const osId = await getOneSignalId();
         setPlayerId(id);
+        setOneSignalId(osId);
       }
     } catch (error) {
       console.error('Failed to check subscription status:', error);
@@ -47,10 +52,13 @@ function NotificationsPage() {
     setTestResult(null);
 
     try {
-      const playerId = await requestNotificationPermission();
+      // Pass user ID to link OneSignal subscription to our user database
+      const playerId = await requestNotificationPermission(user?.id);
+      const osId = await getOneSignalId();
       setPlayerId(playerId);
+      setOneSignalId(osId);
       setSubscriptionStatus('subscribed');
-      setTestResult({ success: true, message: 'Notifications enabled successfully!' });
+      setTestResult({ success: true, message: 'Notifications enabled successfully! You will now appear in OneSignal dashboard.' });
     } catch (error) {
       console.error('Failed to enable notifications:', error);
       setTestResult({
@@ -137,13 +145,27 @@ function NotificationsPage() {
             ) : null}
           </div>
 
-          {/* Player ID (for debugging) */}
-          {playerId && (
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">Player ID (Subscription ID)</p>
-              <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300">
-                {playerId}
-              </code>
+          {/* Subscription IDs (for debugging) */}
+          {(oneSignalId || playerId) && (
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+              {oneSignalId && (
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">
+                    OneSignal User ID (external_id: {user?.id})
+                  </p>
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300 block break-all">
+                    {oneSignalId}
+                  </code>
+                </div>
+              )}
+              {playerId && (
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">Player ID (Push Subscription)</p>
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300 block break-all">
+                    {playerId}
+                  </code>
+                </div>
+              )}
             </div>
           )}
         </div>

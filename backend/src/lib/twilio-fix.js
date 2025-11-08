@@ -185,10 +185,14 @@ export async function fixPhoneNumberWebhooks(
 export async function updateProviderCredentials(prisma, providerId, newCredentials, encryptionKey) {
   try {
     console.log('[Auto-Fix] Updating provider credentials in database...');
+    console.log('[Auto-Fix] Provider ID to update:', providerId);
 
+    const { encryptCredentials } = await import('./encryption.js');
     const encryptedCredentials = await encryptCredentials(newCredentials, encryptionKey);
 
-    await prisma.provider.update({
+    console.log('[Auto-Fix] Encrypted credentials, executing database update...');
+
+    const updatedProvider = await prisma.provider.update({
       where: { id: providerId },
       data: {
         credentials: encryptedCredentials,
@@ -196,12 +200,25 @@ export async function updateProviderCredentials(prisma, providerId, newCredentia
       },
     });
 
+    console.log('[Auto-Fix] ✓ Database update completed successfully');
+    console.log('[Auto-Fix] Updated provider timestamp:', updatedProvider.updatedAt);
+
+    // Verify by re-decrypting what we just saved
+    const { decryptCredentials } = await import('./encryption.js');
+    const verifyCredentials = await decryptCredentials(updatedProvider.credentials, encryptionKey);
+    console.log('[Auto-Fix] ✓ Verified saved credentials:', {
+      accountSid: verifyCredentials.accountSid,
+      apiKeySid: verifyCredentials.apiKeySid,
+      twimlAppSid: verifyCredentials.twimlAppSid,
+    });
+
     return {
       success: true,
       message: 'Updated provider credentials',
     };
   } catch (error) {
-    console.error('[Auto-Fix] Failed to update credentials:', error);
+    console.error('[Auto-Fix] ✗ Failed to update credentials:', error);
+    console.error('[Auto-Fix] Error details:', error.message, error.stack);
     return {
       success: false,
       message: `Failed to update credentials: ${error.message}`,

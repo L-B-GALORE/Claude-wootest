@@ -13,7 +13,7 @@ import { useState, useEffect } from 'react';
 import { Bell, Check, X, Send } from 'lucide-react';
 import SettingsLayout from './SettingsLayout';
 import { requestNotificationPermission, isSubscribed, getPlayerId } from '../../config/onesignal';
-import api from '../../utils/api';
+import api from '../../services/api';
 
 function NotificationsPage() {
   const [subscriptionStatus, setSubscriptionStatus] = useState('checking'); // checking, subscribed, not_subscribed

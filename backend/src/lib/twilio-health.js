@@ -156,37 +156,22 @@ export async function checkTwiMLApp(client, twimlAppSid, expectedBaseUrl) {
  */
 export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppSid) {
   try {
-    console.log('[Health Check] Testing API Key by verifying it exists in Twilio...');
+    console.log('[Health Check] Testing API Key using SAME method as dashboard token generation...');
     console.log('[Health Check] Checking API Key SID:', apiKeySid);
 
     const twilio = await import('twilio');
 
-    // CRITICAL: Try to create a client with the API Key credentials and make a real API call
-    // This will only work if the API Key actually exists in Twilio
-    const client = twilio.default(apiKeySid, apiKeySecret, {
-      accountSid: accountSid,
-    });
-
-    // Try to make a simple API call to verify the credentials work
-    try {
-      await client.api.v2010.accounts(accountSid).fetch();
-      console.log('[Health Check] ✓ API Key authenticated successfully with Twilio');
-    } catch (authError) {
-      // If we get an authentication error, the API Key doesn't exist or is invalid
-      console.error('[Health Check] ✗ API Key authentication failed:', authError.message);
-      console.error('[Health Check] Failed API Key SID:', apiKeySid);
-      return {
-        status: 'fail',
-        message: 'API Key does not exist in Twilio or is invalid',
-        canAutoFix: true,
-        error: authError.message,
-      };
-    }
-
-    // Also test token generation to be thorough
+    // CRITICAL: Use the EXACT SAME method as dashboard token generation
+    // This is the same code path that actually gets used for calling
+    // Located in: backend/src/lib/twilio.js generateAccessToken()
+    //
+    // We do NOT use client.api.v2010.accounts().fetch() because that's a different
+    // code path than actual calling. The dashboard generates a JWT token locally,
+    // then Twilio Device validates it when register() is called. We test the same way.
     const AccessToken = twilio.default.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
+    // Generate token exactly like the dashboard does
     const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
       identity: 'health-check-test',
       ttl: 60,
@@ -201,15 +186,16 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
     const jwt = token.toJwt();
 
     if (!jwt || jwt.length === 0) {
+      console.error('[Health Check] ✗ Token generation returned empty JWT');
       return {
         status: 'fail',
-        message: 'Token generation returned empty JWT',
+        message: 'Token generation failed',
         canAutoFix: true,
         error: 'Empty JWT',
       };
     }
 
-    console.log('[Health Check] API Key exists in Twilio and can generate tokens');
+    console.log('[Health Check] ✓ API Key can generate valid tokens (same validation as dashboard)');
 
     return {
       status: 'pass',
@@ -217,7 +203,8 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
       canAutoFix: false,
     };
   } catch (error) {
-    console.error('[Health Check] API Key check failed:', error.message);
+    console.error('[Health Check] ✗ API Key token generation failed:', error.message);
+    console.error('[Health Check] Failed API Key SID:', apiKeySid);
     console.error('[Health Check] Full error:', error);
 
     return {

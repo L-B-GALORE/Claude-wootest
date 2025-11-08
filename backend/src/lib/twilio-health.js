@@ -157,6 +157,7 @@ export async function checkTwiMLApp(client, twimlAppSid, expectedBaseUrl) {
 export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppSid) {
   try {
     console.log('[Health Check] Testing API Key by verifying it exists in Twilio...');
+    console.log('[Health Check] Checking API Key SID:', apiKeySid);
 
     const twilio = await import('twilio');
 
@@ -169,9 +170,11 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
     // Try to make a simple API call to verify the credentials work
     try {
       await client.api.v2010.accounts(accountSid).fetch();
+      console.log('[Health Check] ✓ API Key authenticated successfully with Twilio');
     } catch (authError) {
       // If we get an authentication error, the API Key doesn't exist or is invalid
-      console.error('[Health Check] API Key authentication failed:', authError.message);
+      console.error('[Health Check] ✗ API Key authentication failed:', authError.message);
+      console.error('[Health Check] Failed API Key SID:', apiKeySid);
       return {
         status: 'fail',
         message: 'API Key does not exist in Twilio or is invalid',
@@ -380,6 +383,8 @@ export async function checkPhoneNumber(
  */
 export async function runFullHealthCheck(provider, channels, baseUrl, encryptionKey) {
   console.log('[Health Check] Starting full health check...');
+  console.log('[Health Check] Provider ID:', provider.id);
+  console.log('[Health Check] Provider last updated:', provider.updatedAt);
 
   const results = {
     overall: 'healthy',
@@ -395,6 +400,14 @@ export async function runFullHealthCheck(provider, channels, baseUrl, encryption
   try {
     // Decrypt credentials
     const credentials = await decryptCredentials(provider.credentials, encryptionKey);
+
+    console.log('[Health Check] Decrypted credentials:', {
+      accountSid: credentials.accountSid,
+      apiKeySid: credentials.apiKeySid,
+      twimlAppSid: credentials.twimlAppSid,
+      hasAuthToken: !!credentials.authToken,
+      hasApiKeySecret: !!credentials.apiKeySecret,
+    });
 
     // Check 1: Credentials
     console.log('[Health Check] Checking credentials...');

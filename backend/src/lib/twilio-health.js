@@ -156,22 +156,16 @@ export async function checkTwiMLApp(client, twimlAppSid, expectedBaseUrl) {
  */
 export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppSid) {
   try {
-    console.log('[Health Check] Testing API Key using SAME method as dashboard token generation...');
+    console.log('[Health Check] Testing API Key using same validation as dashboard...');
     console.log('[Health Check] Checking API Key SID:', apiKeySid);
 
     const twilio = await import('twilio');
 
-    // CRITICAL: Use the EXACT SAME method as dashboard token generation
-    // This is the same code path that actually gets used for calling
-    // Located in: backend/src/lib/twilio.js generateAccessToken()
-    //
-    // We do NOT use client.api.v2010.accounts().fetch() because that's a different
-    // code path than actual calling. The dashboard generates a JWT token locally,
-    // then Twilio Device validates it when register() is called. We test the same way.
+    // Step 1: Generate JWT token locally (same as backend does for dashboard)
+    // This checks if credentials are well-formed
     const AccessToken = twilio.default.jwt.AccessToken;
     const VoiceGrant = AccessToken.VoiceGrant;
 
-    // Generate token exactly like the dashboard does
     const token = new AccessToken(accountSid, apiKeySid, apiKeySecret, {
       identity: 'health-check-test',
       ttl: 60,
@@ -195,7 +189,20 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
       };
     }
 
-    console.log('[Health Check] ✓ API Key can generate valid tokens (same validation as dashboard)');
+    console.log('[Health Check] ✓ Token generated successfully');
+
+    // Step 2: Validate API Key with Twilio (same as Device.register() does in browser)
+    // This checks if API Key actually exists in Twilio account
+    // We make a lightweight API call that will fail if API Key is deleted
+    console.log('[Health Check] Validating API Key exists in Twilio...');
+    const client = twilio.default(apiKeySid, apiKeySecret, {
+      accountSid: accountSid,
+    });
+
+    // Make a simple API call - if API Key is deleted, this will fail
+    await client.incomingPhoneNumbers.list({ limit: 1 });
+
+    console.log('[Health Check] ✓ API Key validated with Twilio successfully');
 
     return {
       status: 'pass',
@@ -203,8 +210,9 @@ export async function checkAPIKey(accountSid, apiKeySid, apiKeySecret, twimlAppS
       canAutoFix: false,
     };
   } catch (error) {
-    console.error('[Health Check] ✗ API Key token generation failed:', error.message);
+    console.error('[Health Check] ✗ API Key validation failed:', error.message);
     console.error('[Health Check] Failed API Key SID:', apiKeySid);
+    console.error('[Health Check] Error code:', error.code);
     console.error('[Health Check] Full error:', error);
 
     return {

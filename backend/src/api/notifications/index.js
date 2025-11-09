@@ -63,9 +63,11 @@ app.post('/test', async (c) => {
     }
 
     // Send notification via OneSignal REST API
+    // For OneSignal SDK v16 (User Model), use include_subscription_ids instead of include_player_ids
     const notificationPayload = {
       app_id: appId,
-      include_player_ids: [playerId],
+      include_subscription_ids: [playerId],
+      target_channel: 'push',
       headings: { en: '🔔 Test Notification' },
       contents: { en: 'This is a test push notification from your Customer Service Platform!' },
       data: {
@@ -102,13 +104,18 @@ app.post('/test', async (c) => {
       );
     }
 
-    console.log('[Notifications] Test notification sent successfully:', result.id);
+    console.log('[Notifications] Test notification sent successfully:', {
+      notificationId: result.id,
+      recipients: result.recipients,
+      errors: result.errors,
+    });
 
     return c.json({
       success: true,
       message: 'Test notification sent successfully',
       notificationId: result.id,
       recipients: result.recipients,
+      ...(result.errors && { warnings: result.errors }),
     });
   } catch (error) {
     console.error('[Notifications] Error sending test notification:', error);

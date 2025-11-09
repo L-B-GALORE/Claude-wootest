@@ -23,6 +23,7 @@ import { getPrisma } from '../lib/prisma.js';
 import { validateWebhookSignature } from '../lib/twilio.js';
 import { decryptCredentials } from '../lib/encryption.js';
 import { findOrCreateContact } from '../services/contact-service.js';
+import { sendNewMessageNotification } from '../services/notification-service.js';
 import {
   downloadExternalMedia,
   uploadFile,
@@ -472,6 +473,17 @@ app.post('/:channelId', async (c) => {
             // Continue anyway
           }
         }
+
+        // Send push notification for new message
+        // This runs asynchronously and won't block the webhook response
+        await sendNewMessageNotification(
+          channel.companyId,
+          message,
+          conversation,
+          contact,
+          c.env,
+          c.env.DATABASE_URL
+        );
       }
 
       console.log('[Inbound] ✅ Successfully logged communication to database');

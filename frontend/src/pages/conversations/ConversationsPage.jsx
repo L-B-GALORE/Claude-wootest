@@ -947,6 +947,26 @@ function MessageDetailsModal({ message, onClose }) {
             <span className="ml-2 text-gray-900 dark:text-white">{message.status}</span>
           </div>
 
+          <div>
+            <span className="font-semibold text-gray-700 dark:text-gray-300">Source:</span>
+            <span className="ml-2 text-gray-900 dark:text-white">
+              {message.source || 'WEBHOOK'}
+              {message.source === 'WEBHOOK' && ' (Real-time)'}
+              {message.source === 'IMPORT' && ' (Imported)'}
+              {message.source === 'MANUAL' && ' (Manual)'}
+              {message.source === 'API' && ' (API)'}
+            </span>
+          </div>
+
+          {message.source === 'WEBHOOK' && (
+            <div>
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Notification Sent:</span>
+              <span className="ml-2 text-gray-900 dark:text-white">
+                {message.notificationSent ? '✅ Yes' : '❌ No'}
+              </span>
+            </div>
+          )}
+
           {message.smsMessage && (
             <>
               <div>

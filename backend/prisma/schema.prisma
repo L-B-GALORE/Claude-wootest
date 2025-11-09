@@ -405,6 +405,15 @@ enum MessageStatus {
   @@map("message_status")
 }
 
+enum MessageSource {
+  WEBHOOK   // Real-time SMS via Twilio webhook - triggers notifications
+  IMPORT    // Bulk import from Twilio - no notifications
+  MANUAL    // User created manually - no notifications
+  API       // Created via API - configurable
+
+  @@map("message_source")
+}
+
 model Message {
   id             String           @id @default(uuid())
   conversationId String           @map("conversation_id")
@@ -413,6 +422,8 @@ model Message {
   senderId       String?          @map("sender_id") // Contact ID or User ID
   body           String           @db.Text
   status         MessageStatus    @default(SENT)
+  source         MessageSource    @default(WEBHOOK) @map("source")
+  notificationSent Boolean        @default(false)   @map("notification_sent")
   metadata       Json?            // Error details, retry count, etc.
   createdAt      DateTime         @default(now()) @map("created_at")
 

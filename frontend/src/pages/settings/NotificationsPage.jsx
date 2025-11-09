@@ -34,32 +34,53 @@ function NotificationsPage() {
     try {
       console.log('[NotificationsPage] Checking subscription status for user:', user?.id);
 
-      // First, restore the OneSignal session by logging in with external_id
-      // This is necessary because the page might have reloaded and OneSignal needs to re-establish the user link
+      // Use the EXACT same flow as handleEnableNotifications but without requesting permission
+      const OneSignal = await (async () => {
+        if (window.OneSignal) return window.OneSignal;
+
+        // Wait for OneSignal to load (same as requestNotificationPermission)
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('OneSignal SDK failed to load')), 10000);
+          const checkInterval = setInterval(() => {
+            if (window.OneSignal) {
+              clearInterval(checkInterval);
+              clearTimeout(timeout);
+              resolve(window.OneSignal);
+            }
+          }, 100);
+        });
+      })();
+
+      // Login with user ID (same as in requestNotificationPermission)
       if (user?.id) {
-        const { loginUser } = await import('../../config/onesignal');
-        try {
-          await loginUser(user.id);
-          console.log('[NotificationsPage] OneSignal session restored with external_id:', user.id);
-        } catch (loginError) {
-          console.warn('[NotificationsPage] Could not restore OneSignal session:', loginError);
-          // Continue anyway - user might not be subscribed yet
-        }
+        await OneSignal.login(user.id);
+        console.log('[NotificationsPage] Logged in with external_id:', user.id);
       }
 
-      // Small delay to let OneSignal fully initialize
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for subscription to be ready (same 1000ms as requestNotificationPermission uses)
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const subscribed = await isSubscribed();
-      console.log('[NotificationsPage] Subscription status:', subscribed);
-      setSubscriptionStatus(subscribed ? 'subscribed' : 'not_subscribed');
+      // Check permission
+      const permission = await OneSignal.Notifications.permission;
+      console.log('[NotificationsPage] Permission:', permission);
 
-      if (subscribed) {
-        const id = await getPlayerId();
-        const osId = await getOneSignalId();
-        console.log('[NotificationsPage] Player ID:', id, 'OneSignal ID:', osId);
+      if (permission !== 'granted') {
+        setSubscriptionStatus('not_subscribed');
+        return;
+      }
+
+      // Get Player ID and OneSignal ID (same as in handleEnableNotifications)
+      const id = await getPlayerId();
+      const osId = await getOneSignalId();
+
+      console.log('[NotificationsPage] Player ID:', id, 'OneSignal ID:', osId);
+
+      if (id || osId) {
         setPlayerId(id);
         setOneSignalId(osId);
+        setSubscriptionStatus('subscribed');
+      } else {
+        setSubscriptionStatus('not_subscribed');
       }
     } catch (error) {
       console.error('[NotificationsPage] Failed to check subscription status:', error);

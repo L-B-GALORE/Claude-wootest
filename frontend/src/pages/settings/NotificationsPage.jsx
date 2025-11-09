@@ -32,17 +32,37 @@ function NotificationsPage() {
 
   async function checkSubscriptionStatus() {
     try {
+      console.log('[NotificationsPage] Checking subscription status for user:', user?.id);
+
+      // First, restore the OneSignal session by logging in with external_id
+      // This is necessary because the page might have reloaded and OneSignal needs to re-establish the user link
+      if (user?.id) {
+        const { loginUser } = await import('../../config/onesignal');
+        try {
+          await loginUser(user.id);
+          console.log('[NotificationsPage] OneSignal session restored with external_id:', user.id);
+        } catch (loginError) {
+          console.warn('[NotificationsPage] Could not restore OneSignal session:', loginError);
+          // Continue anyway - user might not be subscribed yet
+        }
+      }
+
+      // Small delay to let OneSignal fully initialize
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const subscribed = await isSubscribed();
+      console.log('[NotificationsPage] Subscription status:', subscribed);
       setSubscriptionStatus(subscribed ? 'subscribed' : 'not_subscribed');
 
       if (subscribed) {
         const id = await getPlayerId();
         const osId = await getOneSignalId();
+        console.log('[NotificationsPage] Player ID:', id, 'OneSignal ID:', osId);
         setPlayerId(id);
         setOneSignalId(osId);
       }
     } catch (error) {
-      console.error('Failed to check subscription status:', error);
+      console.error('[NotificationsPage] Failed to check subscription status:', error);
       setSubscriptionStatus('not_subscribed');
     }
   }

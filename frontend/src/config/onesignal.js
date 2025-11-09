@@ -102,12 +102,21 @@ export async function requestNotificationPermission(userId) {
 
 /**
  * Check if user is subscribed to push notifications
+ * Returns true only if permission is granted AND there's an active push subscription
  */
 export async function isSubscribed() {
   try {
     const OneSignal = await waitForOneSignal();
+
+    // Check if permission is granted
     const permission = await OneSignal.Notifications.permission;
-    return permission === 'granted';
+    if (permission !== 'granted') {
+      return false;
+    }
+
+    // Check if there's an active push subscription with a Player ID
+    const playerId = await OneSignal.User.PushSubscription.id;
+    return !!playerId;
   } catch (error) {
     console.error('[OneSignal] Failed to check subscription:', error);
     return false;

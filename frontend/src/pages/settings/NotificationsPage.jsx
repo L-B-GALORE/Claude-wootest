@@ -80,7 +80,7 @@ function NotificationsPage() {
     setTestResult(null);
 
     try {
-      const response = await api.post('/notifications/test', { playerId });
+      const response = await api.post('/api/v1/notifications/test', { playerId });
       setTestResult({
         success: true,
         message: response.data.message || 'Test notification sent! Check your browser for the notification.'

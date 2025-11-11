@@ -4,7 +4,11 @@
  * Purpose: Send push notifications via OneSignal
  *
  * Routes:
- * - POST /notifications/test - Send test notification to a specific player
+ * - POST /notifications/test - Send welcome/test notification to a specific player
+ *
+ * Used for:
+ * - Welcome notification when user enables notifications
+ * - Testing notification delivery
  *
  * OneSignal API Documentation:
  * https://documentation.onesignal.com/reference/create-notification
@@ -17,7 +21,8 @@ const app = new Hono();
 /**
  * POST /notifications/test
  *
- * Send a test push notification to a specific OneSignal player
+ * Send a welcome/test push notification to a specific OneSignal player
+ * Used when users enable notifications to confirm it's working
  *
  * Body:
  * - playerId: OneSignal Player ID (subscription ID)
@@ -68,15 +73,15 @@ app.post('/test', async (c) => {
       app_id: appId,
       include_subscription_ids: [playerId],
       target_channel: 'push',
-      headings: { en: '🔔 Test Notification' },
-      contents: { en: 'This is a test push notification from your Customer Service Platform!' },
+      headings: { en: '👋 Welcome!' },
+      contents: { en: 'Notifications are enabled! You\'ll get alerts when new messages arrive.' },
       data: {
-        type: 'test',
+        type: 'welcome',
         timestamp: new Date().toISOString(),
       },
     };
 
-    console.log('[Notifications] Sending test notification to player:', playerId);
+    console.log('[Notifications] Sending welcome notification to player:', playerId);
 
     const response = await fetch('https://onesignal.com/api/v1/notifications', {
       method: 'POST',
@@ -104,7 +109,7 @@ app.post('/test', async (c) => {
       );
     }
 
-    console.log('[Notifications] Test notification sent successfully:', {
+    console.log('[Notifications] Welcome notification sent successfully:', {
       notificationId: result.id,
       recipients: result.recipients,
       errors: result.errors,
@@ -112,7 +117,7 @@ app.post('/test', async (c) => {
 
     return c.json({
       success: true,
-      message: 'Test notification sent successfully',
+      message: 'Welcome notification sent successfully',
       notificationId: result.id,
       recipients: result.recipients,
       ...(result.errors && { warnings: result.errors }),

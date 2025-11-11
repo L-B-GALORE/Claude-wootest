@@ -1,29 +1,26 @@
 /**
  * Notifications Settings Page
  *
- * Purpose: Manage push notification settings and test notifications
+ * Purpose: Manage push notification settings
  *
  * Features:
- * - Enable/disable push notifications
+ * - Enable push notifications for this device
  * - View subscription status
- * - Send test notifications
+ * - Welcome notification after enabling
  */
 
 import { useState, useEffect } from 'react';
-import { Bell, Check, X, Send } from 'lucide-react';
+import { Bell, Check, X } from 'lucide-react';
 import SettingsLayout from './SettingsLayout';
-import { requestNotificationPermission, isSubscribed, getPlayerId, getOneSignalId } from '../../config/onesignal';
+import { requestNotificationPermission, getPlayerId, getOneSignalId } from '../../config/onesignal';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 
 function NotificationsPage() {
   const { user } = useAuth();
   const [subscriptionStatus, setSubscriptionStatus] = useState('checking'); // checking, subscribed, not_subscribed
-  const [playerId, setPlayerId] = useState(null);
-  const [oneSignalId, setOneSignalId] = useState(null);
   const [isEnabling, setIsEnabling] = useState(false);
-  const [isSendingTest, setIsSendingTest] = useState(false);
-  const [testResult, setTestResult] = useState(null); // { success: boolean, message: string }
+  const [statusMessage, setStatusMessage] = useState(null); // { success: boolean, message: string }
 
   // Check subscription status on mount
   useEffect(() => {
@@ -32,8 +29,6 @@ function NotificationsPage() {
 
   async function checkSubscriptionStatus() {
     try {
-      console.log('[NotificationsPage] Checking subscription status for user:', user?.id);
-
       // Wait for OneSignal SDK
       const OneSignal = await (async () => {
         if (window.OneSignal) return window.OneSignal;
@@ -51,36 +46,27 @@ function NotificationsPage() {
 
       // Check if permission is already granted
       const permission = await OneSignal.Notifications.permission;
-      console.log('[NotificationsPage] Current permission:', permission);
 
       if (!permission) {
-        console.log('[NotificationsPage] No permission granted');
         setSubscriptionStatus('not_subscribed');
         return;
       }
 
-      // Permission is granted - restore session and get IDs
+      // Permission is granted - restore session
       if (user?.id) {
         await OneSignal.login(user.id);
-        console.log('[NotificationsPage] Logged in with external_id:', user.id);
       }
 
       // Wait for subscription to be ready
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Get Player ID and OneSignal ID
+      // Check if we have a valid subscription
       const playerId = await OneSignal.User.PushSubscription.id;
       const osId = await OneSignal.User.onesignalId;
 
-      console.log('[NotificationsPage] Player ID:', playerId, 'OneSignal ID:', osId);
-
       if (playerId || osId) {
-        setPlayerId(playerId);
-        setOneSignalId(osId);
         setSubscriptionStatus('subscribed');
-        console.log('[NotificationsPage] ✅ Set status to subscribed');
       } else {
-        console.log('[NotificationsPage] ❌ No IDs found, setting not_subscribed');
         setSubscriptionStatus('not_subscribed');
       }
     } catch (error) {
@@ -91,51 +77,33 @@ function NotificationsPage() {
 
   async function handleEnableNotifications() {
     setIsEnabling(true);
-    setTestResult(null);
+    setStatusMessage(null);
 
     try {
-      // Pass user ID to link OneSignal subscription to our user database
+      // Request notification permission and subscribe user
       const playerId = await requestNotificationPermission(user?.id);
-      const osId = await getOneSignalId();
-      setPlayerId(playerId);
-      setOneSignalId(osId);
       setSubscriptionStatus('subscribed');
-      setTestResult({ success: true, message: 'Notifications enabled successfully! You will now appear in OneSignal dashboard.' });
+
+      // Send welcome notification
+      try {
+        await api.post('/api/v1/notifications/test', { playerId });
+      } catch (notifError) {
+        console.warn('[NotificationsPage] Failed to send welcome notification:', notifError);
+        // Don't fail the whole operation if welcome notification fails
+      }
+
+      setStatusMessage({
+        success: true,
+        message: 'Notifications enabled! This device will now receive push notifications when you get new messages.'
+      });
     } catch (error) {
-      console.error('Failed to enable notifications:', error);
-      setTestResult({
+      console.error('[NotificationsPage] Failed to enable notifications:', error);
+      setStatusMessage({
         success: false,
-        message: error.message || 'Failed to enable notifications. Please check browser permissions.'
+        message: error.message || 'Failed to enable notifications. Please check browser permissions and try again.'
       });
     } finally {
       setIsEnabling(false);
-    }
-  }
-
-  async function handleSendTestNotification() {
-    if (!playerId) {
-      setTestResult({ success: false, message: 'No Player ID available. Please enable notifications first.' });
-      return;
-    }
-
-    setIsSendingTest(true);
-    setTestResult(null);
-
-    try {
-      const response = await api.post('/api/v1/notifications/test', { playerId });
-      setTestResult({
-        success: true,
-        message: response.data.message || 'Test notification sent! Check your browser for the notification.'
-      });
-    } catch (error) {
-      console.error('Failed to send test notification:', error);
-      const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to send test notification';
-      setTestResult({
-        success: false,
-        message: errorMessage
-      });
-    } finally {
-      setIsSendingTest(false);
     }
   }
 
@@ -147,13 +115,13 @@ function NotificationsPage() {
             Push Notifications
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Receive notifications for incoming calls, messages, and important updates
+            Get instant alerts for incoming SMS messages
           </p>
         </div>
 
         {/* Subscription Status Card */}
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={`p-2 rounded-lg ${
                 subscriptionStatus === 'subscribed'
@@ -164,57 +132,29 @@ function NotificationsPage() {
               </div>
               <div>
                 <h3 className="font-medium text-gray-900 dark:text-white">
-                  Notification Status
+                  {subscriptionStatus === 'checking' && 'Checking status...'}
+                  {subscriptionStatus === 'subscribed' && 'Notifications Enabled'}
+                  {subscriptionStatus === 'not_subscribed' && 'Notifications Disabled'}
                 </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {subscriptionStatus === 'checking' && 'Checking subscription status...'}
-                  {subscriptionStatus === 'subscribed' && 'Notifications enabled'}
-                  {subscriptionStatus === 'not_subscribed' && 'Notifications disabled'}
+                  {subscriptionStatus === 'subscribed' && 'This device will receive push notifications'}
+                  {subscriptionStatus === 'not_subscribed' && 'Turn on to receive alerts for new messages'}
                 </p>
               </div>
             </div>
 
-            {subscriptionStatus === 'subscribed' ? (
+            {subscriptionStatus === 'subscribed' && (
               <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
                 <Check className="w-5 h-5" />
                 <span className="text-sm font-medium">Active</span>
               </div>
-            ) : subscriptionStatus === 'not_subscribed' ? (
-              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-500">
-                <X className="w-5 h-5" />
-                <span className="text-sm font-medium">Inactive</span>
-              </div>
-            ) : null}
+            )}
           </div>
-
-          {/* Subscription IDs (for debugging) */}
-          {(oneSignalId || playerId) && (
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-              {oneSignalId && (
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">
-                    OneSignal User ID (external_id: {user?.id})
-                  </p>
-                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300 block break-all">
-                    {oneSignalId}
-                  </code>
-                </div>
-              )}
-              {playerId && (
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mb-1">Player ID (Push Subscription)</p>
-                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300 block break-all">
-                    {playerId}
-                  </code>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Actions */}
-        <div className="space-y-3">
-          {subscriptionStatus === 'not_subscribed' && (
+        {/* Enable Button */}
+        {subscriptionStatus === 'not_subscribed' && (
+          <div>
             <button
               onClick={handleEnableNotifications}
               disabled={isEnabling}
@@ -223,50 +163,47 @@ function NotificationsPage() {
               <Bell className="w-5 h-5" />
               {isEnabling ? 'Enabling...' : 'Enable Notifications'}
             </button>
-          )}
 
-          {subscriptionStatus === 'subscribed' && (
-            <button
-              onClick={handleSendTestNotification}
-              disabled={isSendingTest}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
-            >
-              <Send className="w-5 h-5" />
-              {isSendingTest ? 'Sending...' : 'Send Test Notification'}
-            </button>
-          )}
-        </div>
-
-        {/* Result Message */}
-        {testResult && (
-          <div className={`p-4 rounded-lg border ${
-            testResult.success
-              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300'
-              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'
-          }`}>
-            <div className="flex items-start gap-3">
-              {testResult.success ? (
-                <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              ) : (
-                <X className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              )}
-              <p className="text-sm">{testResult.message}</p>
+            <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <p className="text-sm text-blue-800 dark:text-blue-400">
+                Turn on notifications and this device will get push notifications when you receive a text message.
+              </p>
             </div>
           </div>
         )}
 
-        {/* Info Notice */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <h4 className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
-            About Push Notifications
-          </h4>
-          <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1">
-            <li>• Receive instant alerts for incoming calls and messages</li>
-            <li>• Works even when the app is closed or in the background</li>
-            <li>• You can disable notifications at any time in browser settings</li>
-            <li>• Notifications are sent via OneSignal</li>
-          </ul>
-        </div>
+        {/* Status Message */}
+        {statusMessage && (
+          <div className={`p-4 rounded-lg border ${
+            statusMessage.success
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300'
+              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'
+          }`}>
+            <div className="flex items-start gap-3">
+              {statusMessage.success ? (
+                <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              ) : (
+                <X className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              )}
+              <p className="text-sm">{statusMessage.message}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Info Notice for Subscribed Users */}
+        {subscriptionStatus === 'subscribed' && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <h4 className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
+              How It Works
+            </h4>
+            <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1">
+              <li>• You'll get a notification when someone texts your number</li>
+              <li>• Works even when the app is closed or in the background</li>
+              <li>• Each device needs to enable notifications separately</li>
+              <li>• You can disable notifications in your browser settings</li>
+            </ul>
+          </div>
+        )}
       </div>
     </SettingsLayout>
   );

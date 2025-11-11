@@ -34,20 +34,57 @@ function NotificationsPage() {
     try {
       console.log('[NotificationsPage] Checking subscription status for user:', user?.id);
 
-      // If permission is already granted, call the EXACT same function that works when clicking Enable
-      // requestNotificationPermission won't show a prompt if permission is already granted
-      // It will just initialize OneSignal and return the Player ID
-      const playerId = await requestNotificationPermission(user?.id);
-      const osId = await getOneSignalId();
+      // Wait for OneSignal SDK
+      const OneSignal = await (async () => {
+        if (window.OneSignal) return window.OneSignal;
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('OneSignal SDK failed to load')), 10000);
+          const checkInterval = setInterval(() => {
+            if (window.OneSignal) {
+              clearInterval(checkInterval);
+              clearTimeout(timeout);
+              resolve(window.OneSignal);
+            }
+          }, 100);
+        });
+      })();
 
-      console.log('[NotificationsPage] Got Player ID:', playerId, 'OneSignal ID:', osId);
+      // Check if permission is already granted
+      const permission = await OneSignal.Notifications.permission;
+      console.log('[NotificationsPage] Current permission:', permission);
 
-      setPlayerId(playerId);
-      setOneSignalId(osId);
-      setSubscriptionStatus('subscribed');
+      if (!permission) {
+        console.log('[NotificationsPage] No permission granted');
+        setSubscriptionStatus('not_subscribed');
+        return;
+      }
+
+      // Permission is granted - restore session and get IDs
+      if (user?.id) {
+        await OneSignal.login(user.id);
+        console.log('[NotificationsPage] Logged in with external_id:', user.id);
+      }
+
+      // Wait for subscription to be ready
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Get Player ID and OneSignal ID
+      const playerId = await OneSignal.User.PushSubscription.id;
+      const osId = await OneSignal.User.onesignalId;
+
+      console.log('[NotificationsPage] Player ID:', playerId, 'OneSignal ID:', osId);
+
+      if (playerId || osId) {
+        setPlayerId(playerId);
+        setOneSignalId(osId);
+        setSubscriptionStatus('subscribed');
+        console.log('[NotificationsPage] ✅ Set status to subscribed');
+      } else {
+        console.log('[NotificationsPage] ❌ No IDs found, setting not_subscribed');
+        setSubscriptionStatus('not_subscribed');
+      }
     } catch (error) {
-      // Permission not granted or other error - they need to enable notifications
-      console.log('[NotificationsPage] Not subscribed:', error.message);
+      console.error('[NotificationsPage] Error checking subscription:', error);
       setSubscriptionStatus('not_subscribed');
     }
   }

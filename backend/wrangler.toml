@@ -64,7 +64,7 @@ script_name = "claude-wootestnew-api-staging"
 # ============================================================================
 [env.production]
 name = "claude-wootestnew-api"
-workers_dev = true
+workers_dev = false
 
 # KV Namespaces (production)
 [[env.production.kv_namespaces]]

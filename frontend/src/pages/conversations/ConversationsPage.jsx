@@ -366,6 +366,12 @@ function ConversationsPage() {
 function ConversationListItem({ conversation, isSelected, onClick }) {
   const { contact, lastMessage, lastMessageAt, messageCount, status } = conversation;
 
+  // Safety check: If contact is missing, don't render the item
+  if (!contact) {
+    console.error('[ConversationListItem] Missing contact data:', conversation);
+    return null;
+  }
+
   const formatTimestamp = (date) => {
     if (!date) return '';
     const d = new Date(date);
@@ -410,7 +416,7 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
               ) : null}
 
               <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-                {contact.name || contact.phoneNumber}
+                {contact?.name || contact?.phoneNumber || 'Unknown'}
               </h3>
             </div>
             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 flex-shrink-0">
@@ -418,7 +424,7 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
             </span>
           </div>
 
-          {!contact.name && (
+          {!contact?.name && contact?.phoneNumber && (
             <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 mb-1">
               <Phone className="w-3 h-3 mr-1" />
               {contact.phoneNumber}
@@ -626,7 +632,25 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
     return null;
   }
 
-  const { contact, channel, messages, status } = conversationData;
+  const { contact, channel, messages = [], status } = conversationData;
+
+  // Safety check: Ensure we have required data
+  if (!contact || !channel) {
+    console.error('[MessageThread] Missing required data:', { contact, channel });
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+          <p className="text-lg font-medium text-red-600 dark:text-red-400">
+            Invalid conversation data
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            This conversation is missing required information
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col">
@@ -639,13 +663,13 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {contact.name || contact.phoneNumber}
+                {contact?.name || contact?.phoneNumber || 'Unknown Contact'}
               </h2>
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <Phone className="w-4 h-4" />
-                <span>{contact.phoneNumber}</span>
+                <span>{contact?.phoneNumber || 'N/A'}</span>
                 <span>•</span>
-                <span>Channel: {channel.identifier}</span>
+                <span>Channel: {channel?.identifier || 'Unknown'}</span>
               </div>
             </div>
           </div>

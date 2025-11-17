@@ -120,7 +120,10 @@ export default function MediaAttachment({ media, isInbound }) {
                     {mediaItem.filename}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {(mediaItem.sizeBytes / 1024).toFixed(1)} KB
+                    {mediaItem.sizeBytes
+                      ? `${(mediaItem.sizeBytes / 1024).toFixed(1)} KB`
+                      : 'Unknown size'
+                    }
                   </p>
                 </div>
                 <button

@@ -176,7 +176,7 @@ function CallManager() {
   const handleSocketCallAnswered = (data) => {
     console.log('[CallManager] ✅ WebSocket call answered event:', data);
     // Another user answered the call, we can dismiss our incoming call UI
-    if (currentCall && data.callSid === currentCall.parameters.CallSid) {
+    if (currentCall && data.callSid === currentCall.parameters?.CallSid) {
       console.log('[CallManager] Call was answered by another user, dismissing');
       setCallState('idle');
       setCurrentCall(null);
@@ -186,7 +186,7 @@ function CallManager() {
   const handleSocketCallEnded = (data) => {
     console.log('[CallManager] 📵 WebSocket call ended event:', data);
     // Call ended, update UI if we're tracking this call
-    if (currentCall && data.callSid === currentCall.parameters.CallSid) {
+    if (currentCall && data.callSid === currentCall.parameters?.CallSid) {
       console.log('[CallManager] Call ended via WebSocket');
       setCallState('idle');
       setCurrentCall(null);

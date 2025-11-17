@@ -40,14 +40,16 @@ function OutboundDialer({ onCall, onCancel }) {
         // Fetch company settings to get default country code
         try {
           const settingsResponse = await api.get('/api/v1/company/settings');
-          const defaultCountry = settingsResponse.data.data.settings?.default_country_code;
-          if (defaultCountry && defaultCountry.code) {
-            setSelectedCountry(defaultCountry.code);
-            console.log('[OutboundDialer] Using company default country:', defaultCountry.code);
+          const defaultCountry = settingsResponse.data?.data?.settings?.default_country_code;
+          const countryCode = defaultCountry?.code;
+
+          if (countryCode) {
+            setSelectedCountry(countryCode);
+            console.log('[OutboundDialer] Using company default country:', countryCode);
           }
         } catch (err) {
           console.warn('[OutboundDialer] Could not fetch company settings, using US as default:', err);
-          // Continue with default US
+          // Continue with default US - no action needed
         }
 
         // Fetch available caller IDs

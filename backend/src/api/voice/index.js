@@ -82,10 +82,13 @@ app.post('/token', async (c) => {
     );
 
     console.log('[Voice Token] Generating token for user:', userId);
+    console.log('[Voice Token] Provider last updated:', provider.updatedAt);
     console.log('[Voice Token] Using credentials:', {
-      accountSid: credentials.accountSid?.substring(0, 10) + '...',
-      apiKeySid: credentials.apiKeySid?.substring(0, 10) + '...',
-      twimlAppSid: credentials.twimlAppSid?.substring(0, 10) + '...'
+      accountSid: credentials.accountSid,
+      apiKeySid: credentials.apiKeySid,
+      twimlAppSid: credentials.twimlAppSid,
+      hasAuthToken: !!credentials.authToken,
+      hasApiKeySecret: !!credentials.apiKeySecret,
     });
 
     // Generate access token using the API key and TwiML App SID

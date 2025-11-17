@@ -12,14 +12,17 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2 } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw, Wifi, WifiOff, X, ArrowLeft } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
+import FileUpload from '../../components/media/FileUpload';
+import MediaAttachment from '../../components/media/MediaAttachment';
 
 function ConversationsPage() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('OPEN'); // OPEN, CLOSED, BOTH
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // connecting, connected, disconnected, error
   const selectedConversationIdRef = useRef(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -63,12 +66,35 @@ function ConversationsPage() {
     // Connect WebSocket
     socketManager.connect(user.id, user.companyId);
 
+    // Handle WebSocket connected/reconnected - refetch data to catch any missed messages
+    const handleSocketConnected = () => {
+      console.log('[ConversationsPage] WebSocket (re)connected - refreshing data to catch missed messages');
+      setConnectionStatus('connected');
+      queryClient.invalidateQueries(['conversations']);
+      const currentConversationId = selectedConversationIdRef.current;
+      if (currentConversationId) {
+        queryClient.refetchQueries(['conversation', currentConversationId]);
+      }
+    };
+
+    // Handle WebSocket disconnected
+    const handleSocketDisconnected = () => {
+      console.log('[ConversationsPage] WebSocket disconnected');
+      setConnectionStatus('disconnected');
+    };
+
+    // Handle WebSocket error
+    const handleSocketError = () => {
+      console.log('[ConversationsPage] WebSocket error');
+      setConnectionStatus('error');
+    };
+
     // Handle new incoming messages
     const handleNewMessage = (data) => {
       console.log('[ConversationsPage] Received new_message event:', data);
 
-      // Refresh conversation list
-      queryClient.invalidateQueries(['conversations']);
+      // Force refetch conversation list (all pages) for real-time updates
+      queryClient.refetchQueries(['conversations']);
 
       // If viewing this conversation, refresh it
       const currentConversationId = selectedConversationIdRef.current;
@@ -81,8 +107,8 @@ function ConversationsPage() {
     const handleMessageSent = (data) => {
       console.log('[ConversationsPage] Received message_sent event:', data);
 
-      // Refresh conversation list
-      queryClient.invalidateQueries(['conversations']);
+      // Force refetch conversation list (all pages) for real-time updates
+      queryClient.refetchQueries(['conversations']);
 
       // If viewing this conversation, refresh it immediately
       const currentConversationId = selectedConversationIdRef.current;
@@ -113,7 +139,7 @@ function ConversationsPage() {
       console.log('[ConversationsPage] Received conversation_status_updated event:', data);
 
       // Refetch all conversation lists (could be moving between filters)
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries(['conversations']);
 
       // If viewing this conversation, refresh it
       const currentConversationId = selectedConversationIdRef.current;
@@ -127,7 +153,7 @@ function ConversationsPage() {
       console.log('[ConversationsPage] Received conversation_reopened event:', data);
 
       // Refetch all conversation lists (conversation moved from CLOSED to OPEN)
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries(['conversations']);
 
       // If viewing this conversation, refresh it
       const currentConversationId = selectedConversationIdRef.current;
@@ -136,30 +162,98 @@ function ConversationsPage() {
       }
     };
 
+    // Handle message retried
+    const handleMessageRetried = (data) => {
+      console.log('[ConversationsPage] Received message_retried event:', data);
+
+      // Force refetch conversation list (all pages) for real-time updates
+      queryClient.refetchQueries(['conversations']);
+
+      // If viewing this conversation, refresh it immediately
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        console.log('[ConversationsPage] Refetching conversation after message retried');
+        queryClient.refetchQueries(['conversation', currentConversationId]);
+      }
+    };
+
     // Subscribe to events
+    socketManager.on('socket_connected', handleSocketConnected);
+    socketManager.on('socket_disconnected', handleSocketDisconnected);
+    socketManager.on('socket_error', handleSocketError);
     socketManager.on('new_message', handleNewMessage);
     socketManager.on('message_sent', handleMessageSent);
     socketManager.on('message_status_updated', handleStatusUpdate);
     socketManager.on('conversation_status_updated', handleConversationStatusUpdate);
     socketManager.on('conversation_reopened', handleConversationReopened);
+    socketManager.on('message_retried', handleMessageRetried);
 
     // Cleanup on unmount
     return () => {
       console.log('[ConversationsPage] Cleaning up WebSocket listeners');
+      socketManager.off('socket_connected', handleSocketConnected);
+      socketManager.off('socket_disconnected', handleSocketDisconnected);
+      socketManager.off('socket_error', handleSocketError);
       socketManager.off('new_message', handleNewMessage);
       socketManager.off('message_sent', handleMessageSent);
       socketManager.off('message_status_updated', handleStatusUpdate);
       socketManager.off('conversation_status_updated', handleConversationStatusUpdate);
       socketManager.off('conversation_reopened', handleConversationReopened);
+      socketManager.off('message_retried', handleMessageRetried);
     };
   }, [user, queryClient]); // queryClient is stable, selectedConversationId tracked via ref
+
+  // Handle tab visibility changes - refetch when user returns to tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[ConversationsPage] Tab became visible - refreshing conversations');
+        queryClient.invalidateQueries(['conversations']);
+        const currentConversationId = selectedConversationIdRef.current;
+        if (currentConversationId) {
+          queryClient.refetchQueries(['conversation', currentConversationId]);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [queryClient]);
 
   return (
     <div className="h-full flex bg-gray-100 dark:bg-gray-900">
       {/* Left Panel - Conversation List */}
-      <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      {/* Mobile: hide when conversation selected, Desktop: always show */}
+      <div className={`${selectedConversationId ? 'hidden md:flex' : 'flex'} w-full md:w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col`}>
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h1>
+
+            {/* Connection Status Indicator */}
+            <div className="flex items-center gap-2">
+              {connectionStatus === 'connected' && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                  <Wifi className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                  <span className="text-xs font-medium text-green-700 dark:text-green-300">Connected</span>
+                </div>
+              )}
+              {connectionStatus === 'connecting' && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                  <Loader2 className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400 animate-spin" />
+                  <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">Connecting...</span>
+                </div>
+              )}
+              {(connectionStatus === 'disconnected' || connectionStatus === 'error') && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                  <WifiOff className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                  <span className="text-xs font-medium text-red-700 dark:text-red-300">Offline</span>
+                </div>
+              )}
+            </div>
+          </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Showing {currentCount} of {totalCount} conversation{totalCount !== 1 ? 's' : ''}
           </p>
@@ -247,7 +341,8 @@ function ConversationsPage() {
       </div>
 
       {/* Right Panel - Message Thread */}
-      <div className="flex-1 flex flex-col">
+      {/* Mobile: show only when conversation selected, Desktop: always show */}
+      <div className={`${selectedConversationId ? 'flex' : 'hidden md:flex'} flex-1 flex-col`}>
         {selectedConversationId ? (
           <MessageThread
             conversationId={selectedConversationId}
@@ -272,6 +367,12 @@ function ConversationsPage() {
 // Conversation List Item Component
 function ConversationListItem({ conversation, isSelected, onClick }) {
   const { contact, lastMessage, lastMessageAt, messageCount, status } = conversation;
+
+  // Safety check: If contact is missing, don't render the item
+  if (!contact) {
+    console.error('[ConversationListItem] Missing contact data:', conversation);
+    return null;
+  }
 
   const formatTimestamp = (date) => {
     if (!date) return '';
@@ -317,7 +418,7 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
               ) : null}
 
               <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-                {contact.name || contact.phoneNumber}
+                {contact?.name || contact?.phoneNumber || 'Unknown'}
               </h3>
             </div>
             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 flex-shrink-0">
@@ -325,7 +426,7 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
             </span>
           </div>
 
-          {!contact.name && (
+          {!contact?.name && contact?.phoneNumber && (
             <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 mb-1">
               <Phone className="w-3 h-3 mr-1" />
               {contact.phoneNumber}
@@ -353,47 +454,113 @@ function ConversationListItem({ conversation, isSelected, onClick }) {
 // Message Thread Component
 function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   const [messageText, setMessageText] = useState('');
+  const [showFileUpload, setShowFileUpload] = useState(false);
+  const [uploadedMedia, setUploadedMedia] = useState([]);
   const [recentlySentMessage, setRecentlySentMessage] = useState(false);
+  const [sendError, setSendError] = useState(null);
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
 
   // Fetch conversation with messages
-  // Use aggressive polling when we recently sent a message (fallback for WebSocket timing)
+  // Use aggressive polling as reliable fallback for WebSocket failures
+  // - 2s after sending a message (for immediate status updates)
+  // - 5s normally (catches messages if WebSocket drops)
   const { data: conversationData, isLoading } = useQuery({
     queryKey: ['conversation', conversationId],
-    queryFn: async () => {
-      const response = await api.get(`/api/v1/conversations/${conversationId}`);
+    queryFn: async ({ signal }) => {
+      const response = await api.get(`/api/v1/conversations/${conversationId}`, {
+        signal, // Pass abort signal to cancel previous requests
+      });
       return response.data.data.conversation;
     },
     enabled: !!conversationId,
-    refetchInterval: recentlySentMessage ? 2000 : 60000, // Poll every 2s after send, then 60s
+    refetchInterval: recentlySentMessage ? 2000 : 5000, // Poll every 2s after send, then 5s
     refetchOnMount: 'always',
     staleTime: 0,
   });
 
-  // Stop aggressive polling after 30 seconds
+  // Stop aggressive polling when messages reach final state or after 2 minutes
+  useEffect(() => {
+    if (recentlySentMessage && conversationData) {
+      console.log('[MessageThread] Checking message statuses for polling');
+
+      // Get outbound messages from last 5 minutes
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const recentOutboundMessages = conversationData.messages?.filter(msg => {
+        const msgDate = new Date(msg.createdAt);
+        return msg.direction === 'OUTBOUND' && msgDate > fiveMinutesAgo;
+      }) || [];
+
+      // Check if all recent messages have reached final state
+      const allMessagesSettled = recentOutboundMessages.every(msg =>
+        ['DELIVERED', 'FAILED', 'UNDELIVERED'].includes(msg.status)
+      );
+
+      if (allMessagesSettled && recentOutboundMessages.length > 0) {
+        console.log('[MessageThread] All recent messages settled, stopping aggressive polling');
+        setRecentlySentMessage(false);
+      }
+    }
+  }, [recentlySentMessage, conversationData]);
+
+  // Failsafe: Stop aggressive polling after 2 minutes
   useEffect(() => {
     if (recentlySentMessage) {
       console.log('[MessageThread] Starting aggressive polling after message send');
       const timer = setTimeout(() => {
-        console.log('[MessageThread] Stopping aggressive polling');
+        console.log('[MessageThread] Stopping aggressive polling after 2 minute timeout');
         setRecentlySentMessage(false);
-      }, 30000); // Stop after 30 seconds
+      }, 120000); // Stop after 2 minutes (increased from 30s)
       return () => clearTimeout(timer);
     }
   }, [recentlySentMessage]);
 
   // Send message mutation
   const sendMessageMutation = useMutation({
-    mutationFn: async (body) => {
-      await api.post(`/api/v1/conversations/${conversationId}/messages`, { body });
+    mutationFn: async ({ body, media }) => {
+      console.log('[MessageThread] Sending to API:', { body, media });
+      const response = await api.post(`/api/v1/conversations/${conversationId}/messages`, {
+        body,
+        media,
+      });
+      return response.data;
     },
     onSuccess: () => {
-      console.log('[MessageThread] Message sent, enabling aggressive polling for status updates');
+      console.log('[MessageThread] Message sent successfully');
       setRecentlySentMessage(true); // Start aggressive polling
       queryClient.invalidateQueries(['conversation', conversationId]);
       queryClient.invalidateQueries(['conversations']);
       setMessageText('');
+      setUploadedMedia([]);
+      setShowFileUpload(false);
+      setSendError(null); // Clear any previous errors
+    },
+    onError: (error) => {
+      console.error('[MessageThread] Send failed:', error);
+
+      // Extract Twilio error
+      let errorMessage = 'Failed to send message';
+
+      if (error.response?.data?.error) {
+        const apiError = error.response.data.error;
+        errorMessage = apiError.message || errorMessage;
+
+        if (apiError.twilioCode) {
+          errorMessage += ` (Twilio Code: ${apiError.twilioCode})`;
+        }
+
+        console.error('[MessageThread] Twilio Error:', {
+          message: apiError.message,
+          code: apiError.twilioCode,
+          status: apiError.twilioStatus,
+          moreInfo: apiError.moreInfo,
+        });
+      }
+
+      setSendError(errorMessage);
+
+      // Refetch conversation to show the error in the message itself
+      queryClient.invalidateQueries(['conversation', conversationId]);
     },
   });
 
@@ -430,9 +597,27 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    if (messageText.trim()) {
-      sendMessageMutation.mutate(messageText);
+    console.log('[MessageThread] Send clicked:', { messageText, uploadedMedia });
+    if (messageText.trim() || uploadedMedia.length > 0) {
+      console.log('[MessageThread] Sending message with media:', uploadedMedia);
+      sendMessageMutation.mutate({
+        body: messageText || '', // Ensure body is always a string
+        media: uploadedMedia.length > 0 ? uploadedMedia : undefined,
+      });
     }
+  };
+
+  const handleFilesUploaded = (files) => {
+    console.log('[MessageThread] Files uploaded:', files);
+    setUploadedMedia((prev) => {
+      const updated = [...prev, ...files];
+      console.log('[MessageThread] Updated media state:', updated);
+      return updated;
+    });
+  };
+
+  const handleRemoveMedia = (index) => {
+    setUploadedMedia((prev) => prev.filter((_, i) => i !== index));
   };
 
   if (isLoading) {
@@ -449,32 +634,59 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
     return null;
   }
 
-  const { contact, channel, messages, status } = conversationData;
+  const { contact, channel, messages = [], status } = conversationData;
+
+  // Safety check: Ensure we have required data
+  if (!contact || !channel) {
+    console.error('[MessageThread] Missing required data:', { contact, channel });
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+          <p className="text-lg font-medium text-red-600 dark:text-red-400">
+            Invalid conversation data
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            This conversation is missing required information
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Thread Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+    <div className="h-full flex flex-col">
+      {/* Thread Header - Fixed */}
+      <div className="flex-shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+            {/* Back button for mobile */}
+            <button
+              onClick={onClearConversation}
+              className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              aria-label="Back to conversations"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            </button>
+
+            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center flex-shrink-0">
               <User className="w-5 h-5 text-primary-600 dark:text-primary-400" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {contact.name || contact.phoneNumber}
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                {contact?.name || contact?.phoneNumber || 'Unknown Contact'}
               </h2>
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <Phone className="w-4 h-4" />
-                <span>{contact.phoneNumber}</span>
-                <span>•</span>
-                <span>Channel: {channel.identifier}</span>
+                <span className="truncate">{contact?.phoneNumber || 'N/A'}</span>
+                <span className="hidden md:inline">•</span>
+                <span className="hidden md:inline truncate">Channel: {channel?.identifier || 'Unknown'}</span>
               </div>
             </div>
           </div>
 
-          {/* Status Change Buttons */}
-          <div className="flex items-center gap-2">
+          {/* Status Change Buttons - Hidden on mobile */}
+          <div className="hidden md:flex items-center gap-2">
             <button
               onClick={() => changeStatusMutation.mutate('OPEN')}
               disabled={status === 'OPEN' || changeStatusMutation.isPending}
@@ -503,8 +715,8 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50 dark:bg-gray-900">
+      {/* Messages - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gray-50 dark:bg-gray-900">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400 py-8">
             No messages yet
@@ -517,9 +729,63 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+      {/* Message Input - Fixed at bottom */}
+      <div className="flex-shrink-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 relative z-10">
+        {/* Error Banner */}
+        {sendError && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">Failed to send message</p>
+              <p className="text-sm text-red-700 dark:text-red-300 mt-1">{sendError}</p>
+            </div>
+            <button
+              onClick={() => setSendError(null)}
+              className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* File Upload Section */}
+        {showFileUpload && (
+          <div className="mb-4">
+            <FileUpload onFilesUploaded={handleFilesUploaded} />
+          </div>
+        )}
+
+        {/* Uploaded Media Preview */}
+        {uploadedMedia.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {uploadedMedia.map((media, index) => (
+              <div
+                key={index}
+                className="relative bg-gray-100 dark:bg-gray-700 rounded-lg p-2 flex items-center gap-2 pr-8"
+              >
+                <span className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-xs">
+                  {media.filename}
+                </span>
+                <button
+                  onClick={() => handleRemoveMedia(index)}
+                  className="absolute top-1 right-1 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded"
+                >
+                  <XCircle className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSendMessage} className="flex gap-2 relative z-10">
+          <button
+            type="button"
+            onClick={() => setShowFileUpload(!showFileUpload)}
+            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+            title="Attach files"
+          >
+            <Paperclip className={`w-5 h-5 ${showFileUpload ? 'text-primary-600' : 'text-gray-600 dark:text-gray-400'}`} />
+          </button>
           <input
             type="text"
             value={messageText}
@@ -530,11 +796,12 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
           />
           <button
             type="submit"
-            disabled={!messageText.trim() || sendMessageMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            disabled={(!messageText.trim() && uploadedMedia.length === 0) || sendMessageMutation.isPending}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0 relative z-20"
+            title={uploadedMedia.length > 0 ? `Send with ${uploadedMedia.length} attachment(s)` : 'Send message'}
           >
             <Send className="w-4 h-4" />
-            {sendMessageMutation.isPending ? 'Sending...' : 'Send'}
+            <span className="hidden sm:inline">{sendMessageMutation.isPending ? 'Sending...' : 'Send'}</span>
           </button>
         </form>
       </div>
@@ -546,8 +813,11 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
 function MessageBubble({ message, contact }) {
   const [showMenu, setShowMenu] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const menuRef = useRef(null);
+  const queryClient = useQueryClient();
   const isInbound = message.direction === 'INBOUND';
+  const isFailed = message.status === 'FAILED';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -608,6 +878,28 @@ function MessageBubble({ message, contact }) {
     return message.status === 'FAILED' ? 'Failed' : 'Sent';
   };
 
+  const handleRetry = async () => {
+    try {
+      setRetrying(true);
+      console.log('[MessageBubble] Retrying message:', message.id);
+
+      await api.post(`/api/v1/messages/${message.id}/retry`);
+
+      console.log('[MessageBubble] Retry successful');
+
+      // Refetch conversation to show updated message
+      queryClient.invalidateQueries(['conversation']);
+      queryClient.invalidateQueries(['conversations']);
+    } catch (error) {
+      console.error('[MessageBubble] Retry failed:', error);
+
+      const errorMsg = error.response?.data?.error?.message || 'Failed to retry message';
+      alert(errorMsg);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   return (
     <div className={`flex group ${isInbound ? 'justify-start' : 'justify-end'}`}>
       <div className={`flex items-end gap-2 max-w-xl ${isInbound ? 'flex-row' : 'flex-row-reverse'}`}>
@@ -618,16 +910,61 @@ function MessageBubble({ message, contact }) {
         )}
 
         <div className="relative">
+          {/* Failed Message Banner */}
+          {isFailed && !isInbound && (
+            <div className="mb-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-lg">
+              <div className="flex items-start gap-2 mb-2">
+                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-900 dark:text-red-100">Failed to send</p>
+                  {message.metadata?.error?.message && (
+                    <p className="text-xs text-red-800 dark:text-red-200 mt-1">
+                      {message.metadata.error.message}
+                      {message.metadata.error.code && (
+                        <span className="ml-1 font-mono">(Code: {message.metadata.error.code})</span>
+                      )}
+                    </p>
+                  )}
+                  {message.metadata?.retryCount > 0 && (
+                    <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                      Retry attempts: {message.metadata.retryCount}/3
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleRetry}
+                disabled={retrying || (message.metadata?.retryCount >= 3)}
+                className="w-full px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCw className={`w-4 h-4 ${retrying ? 'animate-spin' : ''}`} />
+                <span>{retrying ? 'Retrying...' : message.metadata?.retryCount >= 3 ? 'Max retries reached' : 'Retry'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Message Content */}
           <div className="flex items-start gap-2">
             <div
               className={`px-4 py-2 rounded-lg ${
-                isInbound
+                isFailed
+                  ? 'bg-red-100 dark:bg-red-900/30 text-red-900 dark:text-red-100 border-2 border-red-300 dark:border-red-700'
+                  : isInbound
                   ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
                   : 'bg-primary-600 text-white'
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+              {/* Media Attachments */}
+              {message.media && message.media.length > 0 && (
+                <div className="mb-2">
+                  <MediaAttachment media={message.media} isInbound={isInbound} />
+                </div>
+              )}
+
+              {/* Message Text */}
+              {message.body && message.body !== '(Media message)' && (
+                <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+              )}
             </div>
 
             {/* 3-dot menu */}
@@ -729,6 +1066,26 @@ function MessageDetailsModal({ message, onClose }) {
             <span className="font-semibold text-gray-700 dark:text-gray-300">Status:</span>
             <span className="ml-2 text-gray-900 dark:text-white">{message.status}</span>
           </div>
+
+          <div>
+            <span className="font-semibold text-gray-700 dark:text-gray-300">Source:</span>
+            <span className="ml-2 text-gray-900 dark:text-white">
+              {message.source || 'WEBHOOK'}
+              {message.source === 'WEBHOOK' && ' (Real-time)'}
+              {message.source === 'IMPORT' && ' (Imported)'}
+              {message.source === 'MANUAL' && ' (Manual)'}
+              {message.source === 'API' && ' (API)'}
+            </span>
+          </div>
+
+          {message.source === 'WEBHOOK' && (
+            <div>
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Notification Sent:</span>
+              <span className="ml-2 text-gray-900 dark:text-white">
+                {message.notificationSent ? '✅ Yes' : '❌ No'}
+              </span>
+            </div>
+          )}
 
           {message.smsMessage && (
             <>

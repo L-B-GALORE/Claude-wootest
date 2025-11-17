@@ -10,7 +10,7 @@
  */
 
 import { NavLink, useLocation } from 'react-router-dom';
-import { Settings, Inbox, Phone, Building2, Users, User } from 'lucide-react';
+import { Settings, Inbox, Phone, Building2, Users, User, Bell } from 'lucide-react';
 
 function SettingsLayout({ children }) {
   const location = useLocation();
@@ -19,14 +19,15 @@ function SettingsLayout({ children }) {
     { path: '/settings/providers', label: 'Providers', icon: Settings },
     { path: '/settings/channels', label: 'Channels', icon: Phone },
     { path: '/settings/inboxes', label: 'Inboxes', icon: Inbox },
+    { path: '/settings/notifications', label: 'Notifications', icon: Bell },
     { path: '/settings/company', label: 'Company', icon: Building2 },
     { path: '/settings/team', label: 'Team', icon: Users },
     { path: '/settings/profile', label: 'Profile', icon: User },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="p-8">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">

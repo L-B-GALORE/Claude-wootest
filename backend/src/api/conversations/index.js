@@ -171,6 +171,7 @@ app.get('/:id', async (c) => {
         messages: {
           include: {
             smsMessage: true,
+            media: true, // Include media attachments
           },
           orderBy: {
             createdAt: 'asc', // Oldest first (chronological order)
@@ -215,9 +216,9 @@ app.get('/:id', async (c) => {
 
 /**
  * POST /conversations/:id/messages
- * Send a new SMS message in a conversation
+ * Send a new SMS/MMS message in a conversation
  *
- * Body: { body: string }
+ * Body: { body: string, media?: Array<{ url: string, type: string, filename: string, size: number }> }
  */
 app.post('/:id/messages', async (c) => {
   try {
@@ -227,16 +228,16 @@ app.post('/:id/messages', async (c) => {
     const prisma = getPrisma(c.env.DATABASE_URL);
 
     const body = await c.req.json();
-    const { body: messageBody } = body;
+    const { body: messageBody, media } = body;
 
-    // Validate required fields
-    if (!messageBody || !messageBody.trim()) {
+    // Validate: either body or media is required
+    if ((!messageBody || !messageBody.trim()) && (!media || media.length === 0)) {
       return c.json(
         {
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
-            message: 'Message body is required',
+            message: 'Message body or media attachments are required',
           },
         },
         400
@@ -279,12 +280,31 @@ app.post('/:id/messages', async (c) => {
         direction: 'OUTBOUND',
         senderType: 'USER',
         senderId: userId,
-        body: messageBody,
-        status: 'SENT',
+        body: messageBody || (media && media.length > 0 ? '(Media message)' : ''),
+        status: 'PENDING', // Start as PENDING until Twilio confirms
       },
     });
 
-    // Send SMS via Twilio (if provider is Twilio)
+    // Create MessageMedia records for attachments
+    if (media && media.length > 0) {
+      for (const attachment of media) {
+        await prisma.messageMedia.create({
+          data: {
+            messageId: message.id,
+            type: attachment.type,
+            url: attachment.url,
+            filename: attachment.filename,
+            sizeBytes: attachment.size,
+            metadata: {
+              contentType: attachment.contentType,
+            },
+          },
+        });
+      }
+      console.log('[Conversations API] Created', media.length, 'media records');
+    }
+
+    // Send SMS/MMS via Twilio (if provider is Twilio)
     if (conversation.channel.provider.type === 'TWILIO') {
       const twilio = await import('twilio');
       const { decryptCredentials } = await import('../../lib/encryption.js');
@@ -301,13 +321,39 @@ app.post('/:id/messages', async (c) => {
         const baseUrl = c.req.url.split('/api/')[0]; // Get base URL from request
         const statusCallbackUrl = `${baseUrl}/webhooks/status/${conversation.channel.id}`;
 
-        console.log('[Conversations API] Sending SMS with status callback:', statusCallbackUrl);
+        console.log('[Conversations API] Sending SMS/MMS with status callback:', statusCallbackUrl);
 
-        const twilioMessage = await twilioClient.messages.create({
-          body: messageBody,
+        // Prepare message params
+        const messageParams = {
+          body: messageBody || undefined, // Twilio allows MMS without body
           from: conversation.channel.identifier,
           to: conversation.contact.phoneNumber,
           statusCallback: statusCallbackUrl,
+        };
+
+        // Add media URLs if present
+        if (media && media.length > 0) {
+          // Import token generation
+          const { generateMediaToken } = await import('../../lib/storage.js');
+
+          // Convert R2 keys to public URLs with tokens
+          const mediaUrls = media.map((m) => {
+            // Generate temporary token for this media file (valid 1 hour)
+            const token = generateMediaToken(m.url, c.env.ENCRYPTION_KEY, 3600);
+            // Return public URL with token (no auth required)
+            return `${baseUrl}/api/v1/public-media/${token}`;
+          });
+          messageParams.mediaUrl = mediaUrls;
+          console.log('[Conversations API] Sending MMS with', mediaUrls.length, 'public URLs');
+          console.log('[Conversations API] Media URLs:', mediaUrls);
+        }
+
+        const twilioMessage = await twilioClient.messages.create(messageParams);
+
+        // Update message status to SENT now that Twilio accepted it
+        await prisma.message.update({
+          where: { id: message.id },
+          data: { status: 'SENT' },
         });
 
         // Create SMS message record
@@ -360,19 +406,40 @@ app.post('/:id/messages', async (c) => {
         }
       } catch (twilioError) {
         console.error('[Conversations API] Twilio error:', twilioError);
-
-        // Update message status to FAILED
-        await prisma.message.update({
-          where: { id: message.id },
-          data: { status: 'FAILED' },
+        console.error('[Conversations API] Twilio error details:', {
+          message: twilioError.message,
+          code: twilioError.code,
+          status: twilioError.status,
+          moreInfo: twilioError.moreInfo,
         });
 
+        // Update message status to FAILED with error details
+        await prisma.message.update({
+          where: { id: message.id },
+          data: {
+            status: 'FAILED',
+            metadata: {
+              error: {
+                message: twilioError.message,
+                code: twilioError.code,
+                status: twilioError.status,
+                moreInfo: twilioError.moreInfo,
+                timestamp: new Date().toISOString(),
+              },
+            },
+          },
+        });
+
+        // Return the EXACT Twilio error message - don't try to be clever
         return c.json(
           {
             success: false,
             error: {
               code: 'SMS_SEND_FAILED',
-              message: 'Failed to send SMS',
+              message: twilioError.message || 'Failed to send message',
+              twilioCode: twilioError.code,
+              twilioStatus: twilioError.status,
+              moreInfo: twilioError.moreInfo,
             },
           },
           500

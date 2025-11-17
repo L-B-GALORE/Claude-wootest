@@ -69,9 +69,14 @@ class TwilioDeviceService {
       return this.device;
     } catch (error) {
       console.error('[Twilio Device] Initialization error:', error);
+      console.error('[Twilio Device] Error details:', {
+        message: error?.message,
+        response: error?.response?.data,
+        code: error?.code,
+      });
 
       // Check if this is a "no provider configured" error
-      if (error.response?.data?.error?.code === 'PROVIDER_NOT_FOUND') {
+      if (error?.response?.data?.error?.code === 'PROVIDER_NOT_FOUND') {
         console.log('[Twilio Device] No Twilio provider configured - calling features disabled');
         // Trigger event so UI components can react
         this.triggerEvent('no_provider');

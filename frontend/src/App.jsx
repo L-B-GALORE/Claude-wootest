@@ -21,6 +21,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 
+// Components
+import ErrorBoundary from './components/ErrorBoundary';
+
 // Layouts
 import AuthLayout from './layouts/AuthLayout';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -43,6 +46,10 @@ import InboxesPage from './pages/settings/InboxesPage';
 import ProfilePage from './pages/settings/ProfilePage';
 import TeamPage from './pages/settings/TeamPage';
 import CompanyPage from './pages/settings/CompanyPage';
+import NotificationsPage from './pages/settings/NotificationsPage';
+
+// Debug Pages
+import DebugTwilio from './pages/DebugTwilio';
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
@@ -65,44 +72,50 @@ function ProtectedRoute({ children }) {
 
 function App() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route element={<AuthLayout />}>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/verify-email" element={<VerifyEmailPage />} />
-        <Route path="/resend-verification" element={<ResendVerificationPage />} />
-      </Route>
+    <ErrorBoundary>
+      <Routes>
+        {/* Public routes */}
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/resend-verification" element={<ResendVerificationPage />} />
+        </Route>
 
-      {/* Admin route - Full page layout */}
-      <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+        {/* Admin route - Full page layout */}
+        <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
 
-      {/* Protected routes - Dashboard */}
-      <Route
-        element={
-          <ProtectedRoute>
-            <DashboardLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/contacts" element={<ContactsPage />} />
-        <Route path="/calls" element={<CallHistoryPage />} />
-        <Route path="/conversations" element={<ConversationsPage />} />
-      </Route>
+        {/* Protected routes - Dashboard */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <DashboardLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/calls" element={<CallHistoryPage />} />
+          <Route path="/conversations" element={<ConversationsPage />} />
 
-      {/* Settings routes - each is independent with unique keys to force remounting */}
-      <Route path="/settings" element={<Navigate to="/settings/providers" replace />} />
-      <Route path="/settings/providers" element={<ProtectedRoute key="providers"><ProvidersPage key="providers-page" /></ProtectedRoute>} />
-      <Route path="/settings/channels" element={<ProtectedRoute key="channels"><ChannelsPage key="channels-page" /></ProtectedRoute>} />
-      <Route path="/settings/inboxes" element={<ProtectedRoute key="inboxes"><InboxesPage key="inboxes-page" /></ProtectedRoute>} />
-      <Route path="/settings/company" element={<ProtectedRoute key="company"><CompanyPage key="company-page" /></ProtectedRoute>} />
-      <Route path="/settings/team" element={<ProtectedRoute key="team"><TeamPage key="team-page" /></ProtectedRoute>} />
-      <Route path="/settings/profile" element={<ProtectedRoute key="profile"><ProfilePage key="profile-page" /></ProtectedRoute>} />
+          {/* Settings routes - now inside DashboardLayout to show sidebar and call widget */}
+          <Route path="/settings" element={<Navigate to="/settings/providers" replace />} />
+          <Route path="/settings/providers" element={<ProvidersPage key="providers-page" />} />
+          <Route path="/settings/channels" element={<ChannelsPage key="channels-page" />} />
+          <Route path="/settings/inboxes" element={<InboxesPage key="inboxes-page" />} />
+          <Route path="/settings/company" element={<CompanyPage key="company-page" />} />
+          <Route path="/settings/team" element={<TeamPage key="team-page" />} />
+          <Route path="/settings/profile" element={<ProfilePage key="profile-page" />} />
+          <Route path="/settings/notifications" element={<NotificationsPage key="notifications-page" />} />
+        </Route>
 
-      {/* Redirect root to dashboard or login */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+        {/* Debug routes */}
+        <Route path="/debug/twilio" element={<ProtectedRoute><DebugTwilio /></ProtectedRoute>} />
+
+        {/* Redirect root to dashboard or login */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }
 

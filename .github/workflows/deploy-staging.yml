@@ -76,6 +76,8 @@ jobs:
           echo "${{ secrets.ENCRYPTION_KEY_STAGING }}" | npx wrangler secret put ENCRYPTION_KEY --env staging
           echo "${{ secrets.JWT_SECRET }}" | npx wrangler secret put JWT_SECRET --env staging
           echo "${{ secrets.RESEND_API_KEY }}" | npx wrangler secret put RESEND_API_KEY --env staging
+          echo "${{ secrets.ONESIGNAL_APP_ID }}" | npx wrangler secret put ONESIGNAL_APP_ID --env staging
+          echo "${{ secrets.ONESIGNAL_REST_API_KEY }}" | npx wrangler secret put ONESIGNAL_REST_API_KEY --env staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 

@@ -43,7 +43,13 @@ function DashboardLayout() {
     { path: '/settings', label: 'Settings', icon: Settings },
   ];
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => {
+    // For settings, highlight if we're on any settings sub-route
+    if (path === '/settings') {
+      return location.pathname.startsWith('/settings');
+    }
+    return location.pathname === path;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex">

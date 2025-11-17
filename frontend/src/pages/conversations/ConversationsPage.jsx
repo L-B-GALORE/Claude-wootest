@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw, Wifi, WifiOff } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
@@ -22,6 +22,7 @@ import MediaAttachment from '../../components/media/MediaAttachment';
 function ConversationsPage() {
   const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [statusFilter, setStatusFilter] = useState('OPEN'); // OPEN, CLOSED, BOTH
+  const [connectionStatus, setConnectionStatus] = useState('connecting'); // connecting, connected, disconnected, error
   const selectedConversationIdRef = useRef(null);
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -68,11 +69,24 @@ function ConversationsPage() {
     // Handle WebSocket connected/reconnected - refetch data to catch any missed messages
     const handleSocketConnected = () => {
       console.log('[ConversationsPage] WebSocket (re)connected - refreshing data to catch missed messages');
+      setConnectionStatus('connected');
       queryClient.invalidateQueries(['conversations']);
       const currentConversationId = selectedConversationIdRef.current;
       if (currentConversationId) {
         queryClient.refetchQueries(['conversation', currentConversationId]);
       }
+    };
+
+    // Handle WebSocket disconnected
+    const handleSocketDisconnected = () => {
+      console.log('[ConversationsPage] WebSocket disconnected');
+      setConnectionStatus('disconnected');
+    };
+
+    // Handle WebSocket error
+    const handleSocketError = () => {
+      console.log('[ConversationsPage] WebSocket error');
+      setConnectionStatus('error');
     };
 
     // Handle new incoming messages
@@ -165,6 +179,8 @@ function ConversationsPage() {
 
     // Subscribe to events
     socketManager.on('socket_connected', handleSocketConnected);
+    socketManager.on('socket_disconnected', handleSocketDisconnected);
+    socketManager.on('socket_error', handleSocketError);
     socketManager.on('new_message', handleNewMessage);
     socketManager.on('message_sent', handleMessageSent);
     socketManager.on('message_status_updated', handleStatusUpdate);
@@ -176,6 +192,8 @@ function ConversationsPage() {
     return () => {
       console.log('[ConversationsPage] Cleaning up WebSocket listeners');
       socketManager.off('socket_connected', handleSocketConnected);
+      socketManager.off('socket_disconnected', handleSocketDisconnected);
+      socketManager.off('socket_error', handleSocketError);
       socketManager.off('new_message', handleNewMessage);
       socketManager.off('message_sent', handleMessageSent);
       socketManager.off('message_status_updated', handleStatusUpdate);
@@ -210,7 +228,31 @@ function ConversationsPage() {
       {/* Left Panel - Conversation List */}
       <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h1>
+
+            {/* Connection Status Indicator */}
+            <div className="flex items-center gap-2">
+              {connectionStatus === 'connected' && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md">
+                  <Wifi className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                  <span className="text-xs font-medium text-green-700 dark:text-green-300">Connected</span>
+                </div>
+              )}
+              {connectionStatus === 'connecting' && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                  <Loader2 className="w-3.5 h-3.5 text-yellow-600 dark:text-yellow-400 animate-spin" />
+                  <span className="text-xs font-medium text-yellow-700 dark:text-yellow-300">Connecting...</span>
+                </div>
+              )}
+              {(connectionStatus === 'disconnected' || connectionStatus === 'error') && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md">
+                  <WifiOff className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+                  <span className="text-xs font-medium text-red-700 dark:text-red-300">Offline</span>
+                </div>
+              )}
+            </div>
+          </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Showing {currentCount} of {totalCount} conversation{totalCount !== 1 ? 's' : ''}
           </p>

@@ -16,11 +16,13 @@ import { useState, useEffect } from 'react';
 import { Phone } from 'lucide-react';
 import twilioDevice from '../../services/twilio-device';
 import socketManager from '../../services/socket';
+import { useAuth } from '../../context/AuthContext';
 import IncomingCallCard from './IncomingCallCard';
 import ActiveCallCard from './ActiveCallCard';
 import OutboundDialer from './OutboundDialer';
 
 function CallManager() {
+  const { user } = useAuth();
   const [callState, setCallState] = useState('idle'); // idle, dialing, ringing, active
   const [currentCall, setCurrentCall] = useState(null);
   const [deviceReady, setDeviceReady] = useState(false);
@@ -70,11 +72,17 @@ function CallManager() {
   }, []);
 
   const initializeSocket = () => {
-    // TODO: Get actual userId and companyId from auth context
-    const userId = 'user-123'; // Temporary hardcoded value
-    const companyId = 'company-456'; // Temporary hardcoded value
+    // Get actual userId and companyId from auth context
+    if (!user?.id || !user?.companyId) {
+      console.error('[CallManager] Missing user credentials, cannot connect socket');
+      setError('Unable to initialize calling - user not authenticated');
+      return;
+    }
 
-    console.log('[CallManager] Initializing WebSocket connection...');
+    const userId = user.id;
+    const companyId = user.companyId;
+
+    console.log('[CallManager] Initializing WebSocket connection with:', { userId, companyId });
 
     // Connect to WebSocket
     socketManager.connect(userId, companyId);

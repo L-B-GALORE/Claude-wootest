@@ -397,10 +397,12 @@ enum SenderType {
 }
 
 enum MessageStatus {
-  SENT
-  DELIVERED
-  READ
-  FAILED
+  PENDING      // Message created, waiting for provider to accept
+  SENT         // Provider accepted, message is sending
+  DELIVERED    // Message successfully delivered to recipient
+  READ         // Message was read by recipient (if supported)
+  UNDELIVERED  // Provider could not deliver (temporary failure)
+  FAILED       // Message send failed permanently
 
   @@map("message_status")
 }

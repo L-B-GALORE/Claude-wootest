@@ -281,7 +281,7 @@ app.post('/:id/messages', async (c) => {
         senderType: 'USER',
         senderId: userId,
         body: messageBody || (media && media.length > 0 ? '(Media message)' : ''),
-        status: 'SENT',
+        status: 'PENDING', // Start as PENDING until Twilio confirms
       },
     });
 
@@ -349,6 +349,12 @@ app.post('/:id/messages', async (c) => {
         }
 
         const twilioMessage = await twilioClient.messages.create(messageParams);
+
+        // Update message status to SENT now that Twilio accepted it
+        await prisma.message.update({
+          where: { id: message.id },
+          data: { status: 'SENT' },
+        });
 
         // Create SMS message record
         await prisma.smsMessage.create({

@@ -79,8 +79,8 @@ function ConversationsPage() {
     const handleNewMessage = (data) => {
       console.log('[ConversationsPage] Received new_message event:', data);
 
-      // Refresh conversation list
-      queryClient.invalidateQueries(['conversations']);
+      // Force refetch conversation list (all pages) for real-time updates
+      queryClient.refetchQueries(['conversations']);
 
       // If viewing this conversation, refresh it
       const currentConversationId = selectedConversationIdRef.current;
@@ -93,8 +93,8 @@ function ConversationsPage() {
     const handleMessageSent = (data) => {
       console.log('[ConversationsPage] Received message_sent event:', data);
 
-      // Refresh conversation list
-      queryClient.invalidateQueries(['conversations']);
+      // Force refetch conversation list (all pages) for real-time updates
+      queryClient.refetchQueries(['conversations']);
 
       // If viewing this conversation, refresh it immediately
       const currentConversationId = selectedConversationIdRef.current;
@@ -152,8 +152,8 @@ function ConversationsPage() {
     const handleMessageRetried = (data) => {
       console.log('[ConversationsPage] Received message_retried event:', data);
 
-      // Refresh conversation list
-      queryClient.invalidateQueries(['conversations']);
+      // Force refetch conversation list (all pages) for real-time updates
+      queryClient.refetchQueries(['conversations']);
 
       // If viewing this conversation, refresh it immediately
       const currentConversationId = selectedConversationIdRef.current;

@@ -429,14 +429,38 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
     staleTime: 0,
   });
 
-  // Stop aggressive polling after 30 seconds
+  // Stop aggressive polling when messages reach final state or after 2 minutes
+  useEffect(() => {
+    if (recentlySentMessage && conversationData) {
+      console.log('[MessageThread] Checking message statuses for polling');
+
+      // Get outbound messages from last 5 minutes
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const recentOutboundMessages = conversationData.messages?.filter(msg => {
+        const msgDate = new Date(msg.createdAt);
+        return msg.direction === 'OUTBOUND' && msgDate > fiveMinutesAgo;
+      }) || [];
+
+      // Check if all recent messages have reached final state
+      const allMessagesSettled = recentOutboundMessages.every(msg =>
+        ['DELIVERED', 'FAILED', 'UNDELIVERED'].includes(msg.status)
+      );
+
+      if (allMessagesSettled && recentOutboundMessages.length > 0) {
+        console.log('[MessageThread] All recent messages settled, stopping aggressive polling');
+        setRecentlySentMessage(false);
+      }
+    }
+  }, [recentlySentMessage, conversationData]);
+
+  // Failsafe: Stop aggressive polling after 2 minutes
   useEffect(() => {
     if (recentlySentMessage) {
       console.log('[MessageThread] Starting aggressive polling after message send');
       const timer = setTimeout(() => {
-        console.log('[MessageThread] Stopping aggressive polling');
+        console.log('[MessageThread] Stopping aggressive polling after 2 minute timeout');
         setRecentlySentMessage(false);
-      }, 30000); // Stop after 30 seconds
+      }, 120000); // Stop after 2 minutes (increased from 30s)
       return () => clearTimeout(timer);
     }
   }, [recentlySentMessage]);

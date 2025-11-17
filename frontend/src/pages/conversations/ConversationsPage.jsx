@@ -417,8 +417,10 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   // - 5s normally (catches messages if WebSocket drops)
   const { data: conversationData, isLoading } = useQuery({
     queryKey: ['conversation', conversationId],
-    queryFn: async () => {
-      const response = await api.get(`/api/v1/conversations/${conversationId}`);
+    queryFn: async ({ signal }) => {
+      const response = await api.get(`/api/v1/conversations/${conversationId}`, {
+        signal, // Pass abort signal to cancel previous requests
+      });
       return response.data.data.conversation;
     },
     enabled: !!conversationId,

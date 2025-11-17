@@ -162,7 +162,13 @@ export class CompanyRoom {
       switch (msg.type) {
         case 'heartbeat':
           console.log(`[CompanyRoom] ❤️ Heartbeat from userId: ${userId}`);
-          // Just log it - Cloudflare handles pings/pongs automatically!
+          // Respond with heartbeat acknowledgment
+          ws.send(JSON.stringify({
+            type: 'heartbeat_ack',
+            data: {
+              timestamp: new Date().toISOString(),
+            },
+          }));
           break;
 
         case 'accept_call':

@@ -36,6 +36,12 @@ class SocketManager {
     this.reconnectTimer = null;
     this.shouldReconnect = true;
 
+    // Heartbeat mechanism
+    this.heartbeatInterval = null;
+    this.heartbeatTimeout = null;
+    this.heartbeatIntervalMs = 30000; // Send heartbeat every 30 seconds
+    this.heartbeatTimeoutMs = 10000; // Expect response within 10 seconds
+
     console.log('[SocketManager] Initialized');
   }
 
@@ -95,6 +101,7 @@ class SocketManager {
       this.connected = true;
       this.reconnectAttempts = 0;
       this.reconnectDelay = 1000; // Reset delay
+      this.startHeartbeat(); // Start heartbeat mechanism
       this.triggerEvent('socket_connected', { userId: this.userId, companyId: this.companyId });
     });
 
@@ -102,6 +109,7 @@ class SocketManager {
     this.socket.addEventListener('close', (event) => {
       console.log(`[SocketManager] ❌ WebSocket closed (code: ${event.code}, reason: ${event.reason || 'none'})`);
       this.connected = false;
+      this.stopHeartbeat(); // Stop heartbeat mechanism
       this.triggerEvent('socket_disconnected', { code: event.code, reason: event.reason });
 
       // Attempt reconnection if not manually disconnected
@@ -121,6 +129,11 @@ class SocketManager {
       try {
         const message = JSON.parse(event.data);
         console.log(`[SocketManager] 📨 Received message type '${message.type}':`, message.data || {});
+
+        // Handle heartbeat response
+        if (message.type === 'pong' || message.type === 'heartbeat_ack') {
+          this.handleHeartbeatResponse();
+        }
 
         // Trigger event handlers
         this.triggerEvent(message.type, message.data || {});
@@ -161,6 +174,59 @@ class SocketManager {
 
     // Exponential backoff with max delay
     this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
+  }
+
+  /**
+   * Start heartbeat mechanism
+   */
+  startHeartbeat() {
+    console.log('[SocketManager] Starting heartbeat mechanism');
+
+    // Clear any existing intervals
+    this.stopHeartbeat();
+
+    // Send heartbeat periodically
+    this.heartbeatInterval = setInterval(() => {
+      console.log('[SocketManager] 💓 Sending heartbeat');
+      this.sendHeartbeat();
+
+      // Set timeout for response
+      this.heartbeatTimeout = setTimeout(() => {
+        console.error('[SocketManager] ❌ Heartbeat timeout - no response from server');
+        // Connection is stale, force reconnection
+        this.connected = false;
+        if (this.socket) {
+          this.socket.close();
+        }
+      }, this.heartbeatTimeoutMs);
+    }, this.heartbeatIntervalMs);
+  }
+
+  /**
+   * Stop heartbeat mechanism
+   */
+  stopHeartbeat() {
+    if (this.heartbeatInterval) {
+      console.log('[SocketManager] Stopping heartbeat mechanism');
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
+  }
+
+  /**
+   * Handle heartbeat response from server
+   */
+  handleHeartbeatResponse() {
+    console.log('[SocketManager] 💚 Heartbeat response received');
+    // Clear the timeout - server is responsive
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
   }
 
   /**
@@ -276,6 +342,9 @@ class SocketManager {
     if (this.socket) {
       console.log('[SocketManager] Disconnecting...');
       this.shouldReconnect = false; // Disable auto-reconnection
+
+      // Stop heartbeat
+      this.stopHeartbeat();
 
       // Clear reconnect timer
       if (this.reconnectTimer) {

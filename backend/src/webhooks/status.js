@@ -275,7 +275,9 @@ app.post('/:channelId', async (c) => {
           let messageStatus = 'SENT';
           if (body.MessageStatus === 'delivered') {
             messageStatus = 'DELIVERED';
-          } else if (body.MessageStatus === 'failed' || body.MessageStatus === 'undelivered') {
+          } else if (body.MessageStatus === 'undelivered') {
+            messageStatus = 'UNDELIVERED';
+          } else if (body.MessageStatus === 'failed') {
             messageStatus = 'FAILED';
           }
 

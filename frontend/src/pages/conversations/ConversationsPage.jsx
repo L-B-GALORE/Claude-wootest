@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw, Wifi, WifiOff, X } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw, Wifi, WifiOff, X, ArrowLeft } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';
@@ -226,7 +226,8 @@ function ConversationsPage() {
   return (
     <div className="h-full flex bg-gray-100 dark:bg-gray-900">
       {/* Left Panel - Conversation List */}
-      <div className="w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      {/* Mobile: hide when conversation selected, Desktop: always show */}
+      <div className={`${selectedConversationId ? 'hidden md:flex' : 'flex'} w-full md:w-96 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col`}>
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Messages</h1>
@@ -340,7 +341,8 @@ function ConversationsPage() {
       </div>
 
       {/* Right Panel - Message Thread */}
-      <div className="flex-1 flex flex-col">
+      {/* Mobile: show only when conversation selected, Desktop: always show */}
+      <div className={`${selectedConversationId ? 'flex' : 'hidden md:flex'} flex-1 flex-col`}>
         {selectedConversationId ? (
           <MessageThread
             conversationId={selectedConversationId}
@@ -653,29 +655,38 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Thread Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+    <div className="h-full flex flex-col">
+      {/* Thread Header - Fixed */}
+      <div className="flex-shrink-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+            {/* Back button for mobile */}
+            <button
+              onClick={onClearConversation}
+              className="md:hidden p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              aria-label="Back to conversations"
+            >
+              <ArrowLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            </button>
+
+            <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center flex-shrink-0">
               <User className="w-5 h-5 text-primary-600 dark:text-primary-400" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
                 {contact?.name || contact?.phoneNumber || 'Unknown Contact'}
               </h2>
               <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                 <Phone className="w-4 h-4" />
-                <span>{contact?.phoneNumber || 'N/A'}</span>
-                <span>•</span>
-                <span>Channel: {channel?.identifier || 'Unknown'}</span>
+                <span className="truncate">{contact?.phoneNumber || 'N/A'}</span>
+                <span className="hidden md:inline">•</span>
+                <span className="hidden md:inline truncate">Channel: {channel?.identifier || 'Unknown'}</span>
               </div>
             </div>
           </div>
 
-          {/* Status Change Buttons */}
-          <div className="flex items-center gap-2">
+          {/* Status Change Buttons - Hidden on mobile */}
+          <div className="hidden md:flex items-center gap-2">
             <button
               onClick={() => changeStatusMutation.mutate('OPEN')}
               disabled={status === 'OPEN' || changeStatusMutation.isPending}
@@ -704,8 +715,8 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50 dark:bg-gray-900">
+      {/* Messages - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gray-50 dark:bg-gray-900">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400 py-8">
             No messages yet
@@ -718,8 +729,8 @@ function MessageThread({ conversationId, statusFilter, onClearConversation }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 relative z-10">
+      {/* Message Input - Fixed at bottom */}
+      <div className="flex-shrink-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 relative z-10">
         {/* Error Banner */}
         {sendError && (
           <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3">

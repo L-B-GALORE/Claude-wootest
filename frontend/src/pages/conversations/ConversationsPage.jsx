@@ -125,7 +125,7 @@ function ConversationsPage() {
       console.log('[ConversationsPage] Received conversation_status_updated event:', data);
 
       // Refetch all conversation lists (could be moving between filters)
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries(['conversations']);
 
       // If viewing this conversation, refresh it
       const currentConversationId = selectedConversationIdRef.current;
@@ -139,7 +139,7 @@ function ConversationsPage() {
       console.log('[ConversationsPage] Received conversation_reopened event:', data);
 
       // Refetch all conversation lists (conversation moved from CLOSED to OPEN)
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries(['conversations']);
 
       // If viewing this conversation, refresh it
       const currentConversationId = selectedConversationIdRef.current;

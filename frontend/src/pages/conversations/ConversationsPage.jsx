@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw, Wifi, WifiOff } from 'lucide-react';
+import { MessageSquare, Send, User, Phone, Clock, MoreVertical, Trash2, Info, Check, CheckCheck, XCircle, AlertCircle, CheckCircle2, XOctagon, Loader2, Paperclip, RotateCw, Wifi, WifiOff, X } from 'lucide-react';
 import api from '../../services/api';
 import socketManager from '../../services/socket';
 import { useAuth } from '../../context/AuthContext';

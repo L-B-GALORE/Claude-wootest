@@ -148,6 +148,21 @@ function ConversationsPage() {
       }
     };
 
+    // Handle message retried
+    const handleMessageRetried = (data) => {
+      console.log('[ConversationsPage] Received message_retried event:', data);
+
+      // Refresh conversation list
+      queryClient.invalidateQueries(['conversations']);
+
+      // If viewing this conversation, refresh it immediately
+      const currentConversationId = selectedConversationIdRef.current;
+      if (data.conversationId === currentConversationId) {
+        console.log('[ConversationsPage] Refetching conversation after message retried');
+        queryClient.refetchQueries(['conversation', currentConversationId]);
+      }
+    };
+
     // Subscribe to events
     socketManager.on('socket_connected', handleSocketConnected);
     socketManager.on('new_message', handleNewMessage);
@@ -155,6 +170,7 @@ function ConversationsPage() {
     socketManager.on('message_status_updated', handleStatusUpdate);
     socketManager.on('conversation_status_updated', handleConversationStatusUpdate);
     socketManager.on('conversation_reopened', handleConversationReopened);
+    socketManager.on('message_retried', handleMessageRetried);
 
     // Cleanup on unmount
     return () => {
@@ -165,6 +181,7 @@ function ConversationsPage() {
       socketManager.off('message_status_updated', handleStatusUpdate);
       socketManager.off('conversation_status_updated', handleConversationStatusUpdate);
       socketManager.off('conversation_reopened', handleConversationReopened);
+      socketManager.off('message_retried', handleMessageRetried);
     };
   }, [user, queryClient]); // queryClient is stable, selectedConversationId tracked via ref
 
